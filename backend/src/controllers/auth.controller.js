@@ -4,382 +4,361 @@ import { generateToken } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
 
 export const login = async (req, res) => {
-try {
-const { email, password } = req.body
-
-```
-if (!email || !password) {
-  return res.status(400).json({ message: 'Email y contraseña requeridos' })
-}
-
-const emailNormalizado = email.trim().toLowerCase()
-
-const adminEmail = (process.env.ADMIN_INITIAL_EMAIL || 'admin@americanburger.cl')
-  .trim()
-  .toLowerCase()
-
-const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || 'Admin123456'
-const adminName = process.env.ADMIN_INITIAL_NAME || 'Administrador American Burger'
-
-const isEmergencyAdmin =
-  (emailNormalizado === 'admin@americanburger.cl' && password === 'Admin123456') ||
-  (emailNormalizado === adminEmail && password === adminPassword)
-
-if (isEmergencyAdmin) {
   try {
-    let { data: adminUser } = await supabase
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email y contraseña requeridos' })
+    }
+
+    const emailNormalizado = email.trim().toLowerCase()
+
+    const adminEmail = (process.env.ADMIN_INITIAL_EMAIL || 'admin@americanburger.cl')
+      .trim()
+      .toLowerCase()
+
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || 'Admin123456'
+    const adminName = process.env.ADMIN_INITIAL_NAME || 'Administrador American Burger'
+
+    const isEmergencyAdmin =
+      (emailNormalizado === 'admin@americanburger.cl' && password === 'Admin123456') ||
+      (emailNormalizado === adminEmail && password === adminPassword)
+
+    if (isEmergencyAdmin) {
+      try {
+        let { data: adminUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', emailNormalizado)
+          .maybeSingle()
+
+        const password_hash = await hashPassword(password)
+
+        if (!adminUser) {
+          const { data: newAdmin, error: insertError } = await supabase
+            .from('users')
+            .insert({
+              email: emailNormalizado,
+              password_hash,
+              full_name: adminName,
+              role: 'admin',
+              active: true
+            })
+            .select()
+            .single()
+
+          if (insertError) throw insertError
+          adminUser = newAdmin
+        } else {
+          const { data: fixedAdmin, error: updateError } = await supabase
+            .from('users')
+            .update({
+              password_hash,
+              full_name: adminName,
+              role: 'admin',
+              active: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', adminUser.id)
+            .select()
+            .single()
+
+          if (updateError) throw updateError
+          adminUser = fixedAdmin
+        }
+
+        const token = generateToken(adminUser)
+
+        logger.info(`Login admin de emergencia exitoso: ${emailNormalizado}`)
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: adminUser.id,
+            email: adminUser.email,
+            full_name: adminUser.full_name,
+            role: adminUser.role
+          }
+        })
+      } catch (emergencyError) {
+        logger.error('Error en acceso admin de emergencia:', emergencyError)
+
+        const emergencyUser = {
+          id: '00000000-0000-0000-0000-000000000001',
+          email: emailNormalizado,
+          full_name: adminName,
+          role: 'admin',
+          active: true
+        }
+
+        const token = generateToken(emergencyUser)
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: emergencyUser.id,
+            email: emergencyUser.email,
+            full_name: emergencyUser.full_name,
+            role: emergencyUser.role
+          }
+        })
+      }
+    }
+
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('email', emailNormalizado)
       .maybeSingle()
 
-    const password_hash = await hashPassword(password)
-
-    if (!adminUser) {
-      const { data: newAdmin, error: insertError } = await supabase
-        .from('users')
-        .insert({
-          email: emailNormalizado,
-          password_hash,
-          full_name: adminName,
-          role: 'admin',
-          active: true
-        })
-        .select()
-        .single()
-
-      if (insertError) throw insertError
-      adminUser = newAdmin
-    } else {
-      const { data: fixedAdmin, error: updateError } = await supabase
-        .from('users')
-        .update({
-          password_hash,
-          full_name: adminName,
-          role: 'admin',
-          active: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', adminUser.id)
-        .select()
-        .single()
-
-      if (updateError) throw updateError
-      adminUser = fixedAdmin
+    if (userError || !user) {
+      logger.warn(`Intento de login fallido, usuario no encontrado: ${emailNormalizado}`)
+      return res.status(401).json({ message: 'Credenciales inválidas' })
     }
 
-    const token = generateToken(adminUser)
+    if (user.active === false) {
+      logger.warn(`Usuario inactivo: ${emailNormalizado}`)
+      return res.status(401).json({ message: 'Usuario inactivo' })
+    }
 
-    logger.info(`Login admin de emergencia exitoso: ${emailNormalizado}`)
+    const passwordMatch = await comparePassword(password, user.password_hash)
+
+    if (!passwordMatch) {
+      logger.warn(`Contraseña incorrecta para: ${emailNormalizado}`)
+      return res.status(401).json({ message: 'Credenciales inválidas' })
+    }
+
+    const token = generateToken(user)
+
+    try {
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'LOGIN',
+        details: `Login desde ${req.ip}`,
+        ip_address: req.ip
+      })
+    } catch (auditError) {
+      logger.warn('No se pudo registrar auditoría de login:', auditError?.message || auditError)
+    }
+
+    logger.info(`Login exitoso: ${emailNormalizado}`)
 
     return res.json({
       success: true,
       token,
       user: {
-        id: adminUser.id,
-        email: adminUser.email,
-        full_name: adminUser.full_name,
-        role: adminUser.role
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
       }
     })
-  } catch (emergencyError) {
-    logger.error('Error en acceso admin de emergencia:', emergencyError)
-
-    const emergencyUser = {
-      id: '00000000-0000-0000-0000-000000000001',
-      email: emailNormalizado,
-      full_name: adminName,
-      role: 'admin',
-      active: true
-    }
-
-    const token = generateToken(emergencyUser)
-
-    return res.json({
-      success: true,
-      token,
-      user: {
-        id: emergencyUser.id,
-        email: emergencyUser.email,
-        full_name: emergencyUser.full_name,
-        role: emergencyUser.role
-      }
-    })
+  } catch (error) {
+    logger.error('Error en login:', error)
+    return res.status(500).json({ message: 'Error al iniciar sesión' })
   }
-}
-
-const { data: user, error: userError } = await supabase
-  .from('users')
-  .select('*')
-  .eq('email', emailNormalizado)
-  .maybeSingle()
-
-if (userError || !user) {
-  logger.warn(`Intento de login fallido, usuario no encontrado: ${emailNormalizado}`)
-  return res.status(401).json({ message: 'Credenciales inválidas' })
-}
-
-if (user.active === false) {
-  logger.warn(`Usuario inactivo: ${emailNormalizado}`)
-  return res.status(401).json({ message: 'Usuario inactivo' })
-}
-
-const passwordMatch = await comparePassword(password, user.password_hash)
-
-if (!passwordMatch) {
-  logger.warn(`Contraseña incorrecta para: ${emailNormalizado}`)
-  return res.status(401).json({ message: 'Credenciales inválidas' })
-}
-
-const token = generateToken(user)
-
-try {
-  await supabase.from('audit_logs').insert({
-    user_id: user.id,
-    action: 'LOGIN',
-    details: `Login desde ${req.ip}`,
-    ip_address: req.ip
-  })
-} catch (auditError) {
-  logger.warn('No se pudo registrar auditoría de login:', auditError?.message || auditError)
-}
-
-logger.info(`Login exitoso: ${emailNormalizado}`)
-
-return res.json({
-  success: true,
-  token,
-  user: {
-    id: user.id,
-    email: user.email,
-    full_name: user.full_name,
-    role: user.role
-  }
-})
-```
-
-} catch (error) {
-logger.error('Error en login:', error)
-return res.status(500).json({ message: 'Error al iniciar sesión' })
-}
 }
 
 export const register = async (req, res) => {
-try {
-const { email, password, full_name } = req.body
+  try {
+    const { email, password, full_name } = req.body
 
-```
-if (!email || !password || !full_name) {
-  return res.status(400).json({ message: 'Todos los campos son requeridos' })
-}
+    if (!email || !password || !full_name) {
+      return res.status(400).json({ message: 'Todos los campos son requeridos' })
+    }
 
-const emailNormalizado = email.trim().toLowerCase()
+    const emailNormalizado = email.trim().toLowerCase()
 
-const { data: existing } = await supabase
-  .from('users')
-  .select('id')
-  .eq('email', emailNormalizado)
-  .maybeSingle()
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', emailNormalizado)
+      .maybeSingle()
 
-if (existing) {
-  return res.status(400).json({ message: 'Email ya registrado' })
-}
+    if (existing) {
+      return res.status(400).json({ message: 'Email ya registrado' })
+    }
 
-const password_hash = await hashPassword(password)
+    const password_hash = await hashPassword(password)
 
-const { data: user, error } = await supabase
-  .from('users')
-  .insert({
-    email: emailNormalizado,
-    password_hash,
-    full_name,
-    role: 'cajero',
-    active: true
-  })
-  .select()
-  .single()
+    const { data: user, error } = await supabase
+      .from('users')
+      .insert({
+        email: emailNormalizado,
+        password_hash,
+        full_name,
+        role: 'cajero',
+        active: true
+      })
+      .select()
+      .single()
 
-if (error) throw error
+    if (error) throw error
 
-logger.info(`Nuevo usuario registrado: ${emailNormalizado}`)
+    logger.info(`Nuevo usuario registrado: ${emailNormalizado}`)
 
-return res.status(201).json({
-  success: true,
-  message: 'Usuario registrado exitosamente',
-  user
-})
-```
-
-} catch (error) {
-logger.error('Error en registro:', error)
-return res.status(500).json({ message: 'Error al registrar usuario' })
-}
+    return res.status(201).json({
+      success: true,
+      message: 'Usuario registrado exitosamente',
+      user
+    })
+  } catch (error) {
+    logger.error('Error en registro:', error)
+    return res.status(500).json({ message: 'Error al registrar usuario' })
+  }
 }
 
 export const logout = async (req, res) => {
-try {
-try {
-await supabase.from('audit_logs').insert({
-user_id: req.user.id,
-action: 'LOGOUT',
-details: 'Logout',
-ip_address: req.ip
-})
-} catch (auditError) {
-logger.warn('No se pudo registrar auditoría de logout:', auditError?.message || auditError)
-}
+  try {
+    try {
+      await supabase.from('audit_logs').insert({
+        user_id: req.user.id,
+        action: 'LOGOUT',
+        details: 'Logout',
+        ip_address: req.ip
+      })
+    } catch (auditError) {
+      logger.warn('No se pudo registrar auditoría de logout:', auditError?.message || auditError)
+    }
 
-```
-logger.info(`Logout: ${req.user.email}`)
+    logger.info(`Logout: ${req.user.email}`)
 
-return res.json({ success: true, message: 'Sesión cerrada' })
-```
-
-} catch (error) {
-logger.error('Error en logout:', error)
-return res.status(500).json({ message: 'Error al cerrar sesión' })
-}
+    return res.json({ success: true, message: 'Sesión cerrada' })
+  } catch (error) {
+    logger.error('Error en logout:', error)
+    return res.status(500).json({ message: 'Error al cerrar sesión' })
+  }
 }
 
 export const forgotPassword = async (req, res) => {
-try {
-const { email } = req.body
+  try {
+    const { email } = req.body
 
-```
-if (!email) {
-  return res.status(400).json({ message: 'Email requerido' })
-}
+    if (!email) {
+      return res.status(400).json({ message: 'Email requerido' })
+    }
 
-const emailNormalizado = email.trim().toLowerCase()
+    const emailNormalizado = email.trim().toLowerCase()
 
-const { data: user } = await supabase
-  .from('users')
-  .select('id')
-  .eq('email', emailNormalizado)
-  .maybeSingle()
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', emailNormalizado)
+      .maybeSingle()
 
-if (!user) {
-  return res.status(404).json({ message: 'Usuario no encontrado' })
-}
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' })
+    }
 
-logger.info(`Solicitud de recuperación: ${emailNormalizado}`)
+    logger.info(`Solicitud de recuperación: ${emailNormalizado}`)
 
-return res.json({ success: true, message: 'Revisa tu email para instrucciones' })
-```
-
-} catch (error) {
-logger.error('Error en forgot password:', error)
-return res.status(500).json({ message: 'Error al procesar solicitud' })
-}
+    return res.json({ success: true, message: 'Revisa tu email para instrucciones' })
+  } catch (error) {
+    logger.error('Error en forgot password:', error)
+    return res.status(500).json({ message: 'Error al procesar solicitud' })
+  }
 }
 
 export const resetPassword = async (req, res) => {
-try {
-const { email, newPassword } = req.body
+  try {
+    const { email, newPassword } = req.body
 
-```
-if (!email || !newPassword) {
-  return res.status(400).json({ message: 'Email y nueva contraseña requeridos' })
-}
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: 'Email y nueva contraseña requeridos' })
+    }
 
-const emailNormalizado = email.trim().toLowerCase()
-const password_hash = await hashPassword(newPassword)
+    const emailNormalizado = email.trim().toLowerCase()
+    const password_hash = await hashPassword(newPassword)
 
-const { data: user, error } = await supabase
-  .from('users')
-  .update({
-    password_hash,
-    active: true,
-    updated_at: new Date().toISOString()
-  })
-  .eq('email', emailNormalizado)
-  .select()
-  .single()
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({
+        password_hash,
+        active: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('email', emailNormalizado)
+      .select()
+      .single()
 
-if (error) throw error
+    if (error) throw error
 
-logger.info(`Contraseña reseteada: ${emailNormalizado}`)
+    logger.info(`Contraseña reseteada: ${emailNormalizado}`)
 
-return res.json({
-  success: true,
-  message: 'Contraseña actualizada',
-  user
-})
-```
-
-} catch (error) {
-logger.error('Error reseteando password:', error)
-return res.status(500).json({ message: 'Error al resetear contraseña' })
-}
+    return res.json({
+      success: true,
+      message: 'Contraseña actualizada',
+      user
+    })
+  } catch (error) {
+    logger.error('Error reseteando password:', error)
+    return res.status(500).json({ message: 'Error al resetear contraseña' })
+  }
 }
 
 export const getCurrentUser = async (req, res) => {
-try {
-const { data: user, error } = await supabase
-.from('users')
-.select('id, email, full_name, role')
-.eq('id', req.user.id)
-.single()
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, role')
+      .eq('id', req.user.id)
+      .single()
 
-```
-if (error) throw error
+    if (error) throw error
 
-return res.json({ success: true, user })
-```
-
-} catch (error) {
-logger.error('Error obteniendo usuario actual:', error)
-return res.status(500).json({ message: 'Error al obtener usuario' })
-}
+    return res.json({ success: true, user })
+  } catch (error) {
+    logger.error('Error obteniendo usuario actual:', error)
+    return res.status(500).json({ message: 'Error al obtener usuario' })
+  }
 }
 
 export const changePassword = async (req, res) => {
-try {
-const { currentPassword, newPassword } = req.body
+  try {
+    const { currentPassword, newPassword } = req.body
 
-```
-if (!currentPassword || !newPassword) {
-  return res.status(400).json({
-    message: 'Contraseña actual y nueva contraseña requeridas'
-  })
-}
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message: 'Contraseña actual y nueva contraseña requeridas'
+      })
+    }
 
-const { data: user, error: userError } = await supabase
-  .from('users')
-  .select('password_hash')
-  .eq('id', req.user.id)
-  .single()
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('password_hash')
+      .eq('id', req.user.id)
+      .single()
 
-if (userError) throw userError
+    if (userError) throw userError
 
-const match = await comparePassword(currentPassword, user.password_hash)
+    const match = await comparePassword(currentPassword, user.password_hash)
 
-if (!match) {
-  return res.status(401).json({ message: 'Contraseña actual incorrecta' })
-}
+    if (!match) {
+      return res.status(401).json({ message: 'Contraseña actual incorrecta' })
+    }
 
-const password_hash = await hashPassword(newPassword)
+    const password_hash = await hashPassword(newPassword)
 
-const { error: updateError } = await supabase
-  .from('users')
-  .update({
-    password_hash,
-    updated_at: new Date().toISOString()
-  })
-  .eq('id', req.user.id)
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        password_hash,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.user.id)
 
-if (updateError) throw updateError
+    if (updateError) throw updateError
 
-logger.info(`Contraseña cambiada: ${req.user.email}`)
+    logger.info(`Contraseña cambiada: ${req.user.email}`)
 
-return res.json({
-  success: true,
-  message: 'Contraseña cambiada exitosamente'
-})
-```
-
-} catch (error) {
-logger.error('Error cambiando password:', error)
-return res.status(500).json({ message: 'Error al cambiar contraseña' })
-}
+    return res.json({
+      success: true,
+      message: 'Contraseña cambiada exitosamente'
+    })
+  } catch (error) {
+    logger.error('Error cambiando password:', error)
+    return res.status(500).json({ message: 'Error al cambiar contraseña' })
+  }
 }
