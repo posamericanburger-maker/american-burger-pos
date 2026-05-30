@@ -28,18 +28,28 @@ const Login = () => {
     <div className="flex h-screen bg-black">
       {/* Left Side - Logo and Info */}
       <div className="w-1/2 flex flex-col items-center justify-center text-white p-8">
-        <div className="text-9xl mb-8">🍔</div>
-        <h1 className="text-5xl font-poppins font-bold text-yellow-400 mb-2">AMERICAN</h1>
-        <h2 className="text-5xl font-poppins font-bold text-yellow-400 mb-8">BURGER</h2>
-        <p className="text-2xl font-poppins mb-4">Sistema POS Gastronómico</p>
-        <p className="text-gray-400 text-center">Gestiona tu negocio de comida rápida de forma profesional y eficiente</p>
+        <img
+          src="/logo-american-burger.png"
+          alt="American Burger"
+          className="w-72 h-72 object-contain mx-auto mb-8"
+        />
+
+        <p className="text-2xl font-poppins mb-4">
+          Sistema POS Gastronómico
+        </p>
+
+        <p className="text-gray-400 text-center max-w-md">
+          Gestiona tu negocio de comida rápida de forma profesional y eficiente
+        </p>
       </div>
 
       {/* Right Side - Login Form */}
       <div className="w-1/2 flex items-center justify-center bg-gray-100 p-8">
         <div className="w-full max-w-md">
           <form onSubmit={handleSubmit}>
-            <h3 className="text-3xl font-poppins font-bold text-black mb-8 text-center">Iniciar Sesión</h3>
+            <h3 className="text-3xl font-poppins font-bold text-black mb-8 text-center">
+              Iniciar Sesión
+            </h3>
 
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
