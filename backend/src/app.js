@@ -1,4 +1,5 @@
 import categoriesRoutes from './routes/categories.routes.js'
+import categoriesRoutes from './routes/categories.routes.js'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -23,6 +24,7 @@ app.use(helmet())
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
+app.use('/api/categories', categoriesRoutes)
 }))
 
 // Rate Limiting
