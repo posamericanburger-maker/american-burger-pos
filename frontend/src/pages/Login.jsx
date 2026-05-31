@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
+import logo from '../NNN.png'
 
 const Login = () => {
   const [email, setEmail] = useState('americanburgerarica@gmail.com')
@@ -16,36 +17,36 @@ const Login = () => {
     setError('')
 
     const result = await login(email, password)
+
     if (result.success) {
       navigate('/')
     } else {
       setError(result.error)
     }
+
     setLoading(false)
   }
 
   return (
     <div className="flex h-screen bg-black">
-      {/* Left Side - Logo and Info */}
-      <div className="w-1/2 flex flex-col items-center justify-center text-white p-8">
+      <div className="w-1/2 flex flex-col items-center justify-center text-white p-10 bg-black">
         <img
-          src="/logo-american-burger.png"
+          src={logo}
           alt="American Burger"
-          className="w-72 h-72 object-contain mx-auto mb-8"
+          className="w-[420px] max-w-full object-contain mx-auto mb-10"
         />
 
-        <p className="text-2xl font-poppins mb-4">
+        <p className="text-3xl font-poppins font-bold mb-4 text-white">
           Sistema POS Gastronómico
         </p>
 
-        <p className="text-gray-400 text-center max-w-md">
+        <p className="text-gray-400 text-center max-w-md text-lg">
           Gestiona tu negocio de comida rápida de forma profesional y eficiente
         </p>
       </div>
 
-      {/* Right Side - Login Form */}
       <div className="w-1/2 flex items-center justify-center bg-gray-100 p-8">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
           <form onSubmit={handleSubmit}>
             <h3 className="text-3xl font-poppins font-bold text-black mb-8 text-center">
               Iniciar Sesión
