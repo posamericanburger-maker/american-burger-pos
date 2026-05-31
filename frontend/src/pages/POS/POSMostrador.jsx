@@ -290,11 +290,7 @@ const POSMostrador = () => {
         <head>
           <title>Comanda Cocina</title>
           <style>
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-
+            @page { size: 80mm auto; margin: 0; }
             body {
               width: 80mm;
               margin: 0;
@@ -303,28 +299,21 @@ const POSMostrador = () => {
               color: #000;
               background: #fff;
             }
-
-            .center {
-              text-align: center;
-            }
-
+            .center { text-align: center; }
             .title {
               font-size: 24px;
               font-weight: 900;
               margin: 0;
             }
-
             .subtitle {
               font-size: 14px;
               font-weight: 700;
               margin-top: 4px;
             }
-
             .line {
               border-top: 2px dashed #000;
               margin: 10px 0;
             }
-
             .item {
               display: flex;
               gap: 8px;
@@ -332,27 +321,18 @@ const POSMostrador = () => {
               font-weight: 900;
               margin: 12px 0;
             }
-
-            .qty {
-              min-width: 42px;
-            }
-
-            .name {
-              flex: 1;
-            }
-
+            .qty { min-width: 42px; }
+            .name { flex: 1; }
             .notes-title {
               font-size: 16px;
               font-weight: 900;
               margin-bottom: 4px;
             }
-
             .notes {
               font-size: 17px;
               font-weight: 900;
               white-space: pre-wrap;
             }
-
             .footer {
               font-size: 12px;
               margin-top: 10px;
@@ -396,9 +376,6 @@ const POSMostrador = () => {
   }
 
   const printCustomerReceipt = () => {
-    const iva = Math.round(total * 0.19)
-    const neto = total - iva
-
     const productLines = cart
       .map((item) => {
         const lineTotal = Number(item.price || 0) * Number(item.quantity || 0)
@@ -421,11 +398,7 @@ const POSMostrador = () => {
         <head>
           <title>Recibo Cliente</title>
           <style>
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-
+            @page { size: 80mm auto; margin: 0; }
             body {
               width: 80mm;
               margin: 0;
@@ -435,26 +408,17 @@ const POSMostrador = () => {
               color: #000;
               background: #fff;
             }
-
-            .center {
-              text-align: center;
-            }
-
+            .center { text-align: center; }
             .brand {
               font-size: 22px;
               font-weight: 900;
               margin: 0;
             }
-
-            .small {
-              font-size: 11px;
-            }
-
+            .small { font-size: 11px; }
             .line {
               border-top: 1px dashed #000;
               margin: 8px 0;
             }
-
             .row,
             .product {
               display: flex;
@@ -462,17 +426,14 @@ const POSMostrador = () => {
               gap: 8px;
               margin: 6px 0;
             }
-
             .right {
               text-align: right;
               white-space: nowrap;
             }
-
             .total {
               font-size: 18px;
               font-weight: 900;
             }
-
             .thanks {
               font-size: 12px;
               margin-top: 10px;
@@ -516,19 +477,13 @@ const POSMostrador = () => {
 
           <div class="line"></div>
 
-          <div class="row">
-            <span>Neto</span>
-            <span>${money(neto)}</span>
-          </div>
-
-          <div class="row">
-            <span>IVA 19%</span>
-            <span>${money(iva)}</span>
-          </div>
-
           <div class="row total">
             <span>TOTAL</span>
             <span>${money(total)}</span>
+          </div>
+
+          <div class="center small">
+            Precios con IVA incluido
           </div>
 
           <div class="line"></div>
