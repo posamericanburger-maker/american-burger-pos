@@ -1,4 +1,3 @@
-import customersRoutes from './routes/customers.routes.js'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -14,13 +13,13 @@ import userRoutes from './routes/users.routes.js'
 import reportRoutes from './routes/reports.routes.js'
 import settingsRoutes from './routes/settings.routes.js'
 import categoriesRoutes from './routes/categories.routes.js'
+import customersRoutes from './routes/customers.routes.js'
 
 import { errorHandler } from './middleware/errorHandler.js'
 import { logger } from './utils/logger.js'
 
 const app = express()
 
-app.use('/api/customers', customersRoutes)
 app.use(helmet())
 
 app.use(cors({
@@ -53,6 +52,7 @@ app.use('/api/users', userRoutes)
 app.use('/api/reports', reportRoutes)
 app.use('/api/settings', settingsRoutes)
 app.use('/api/categories', categoriesRoutes)
+app.use('/api/customers', customersRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() })
