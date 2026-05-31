@@ -45,43 +45,12 @@ const normalizeText = (value = '') => {
 const categoryLabel = (name = '') => {
   const normalized = normalizeText(name)
 
-  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) {
-    return '🍔 HAMBURGUESAS'
-  }
-
-  if (
-    normalized.includes('PAPA') ||
-    normalized.includes('SNACK') ||
-    normalized.includes('FRITA')
-  ) {
-    return '🍟 PAPAS & SNACKS'
-  }
-
-  if (normalized.includes('BEBIDA')) {
-    return '🥤 BEBIDAS'
-  }
-
-  if (
-    normalized.includes('INGREDIENTE') ||
-    normalized.includes('EXTRA') ||
-    normalized.includes('+')
-  ) {
-    return '➕ INGREDIENTES'
-  }
-
-  if (
-    normalized.includes('POLLO') ||
-    normalized.includes('CHICKEN') ||
-    normalized.includes('CRISPY') ||
-    normalized.includes('ALITA') ||
-    normalized.includes('TENDER')
-  ) {
-    return '🍗 POLLO CRISPY'
-  }
-
-  if (normalized.includes('COMBO')) {
-    return '🎯 COMBOS'
-  }
+  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) return '🍔 HAMBURGUESAS'
+  if (normalized.includes('PAPA') || normalized.includes('SNACK') || normalized.includes('FRITA')) return '🍟 PAPAS & SNACKS'
+  if (normalized.includes('BEBIDA')) return '🥤 BEBIDAS'
+  if (normalized.includes('INGREDIENTE') || normalized.includes('EXTRA') || normalized.includes('+')) return '➕ INGREDIENTES'
+  if (normalized.includes('POLLO') || normalized.includes('CHICKEN') || normalized.includes('CRISPY') || normalized.includes('ALITA') || normalized.includes('TENDER')) return '🍗 POLLO CRISPY'
+  if (normalized.includes('COMBO')) return '🎯 COMBOS'
 
   return name
 }
@@ -222,11 +191,7 @@ const POSMostrador = () => {
     return Object.entries(salesMap)
       .map(([name, quantity]) => {
         const product = products.find((item) => item.name === name)
-        return {
-          name,
-          quantity,
-          product
-        }
+        return { name, quantity, product }
       })
       .filter((item) => item.product)
       .sort((a, b) => b.quantity - a.quantity)
@@ -301,6 +266,293 @@ const POSMostrador = () => {
     0
   )
 
+  const paymentMethodText = {
+    cash: 'EFECTIVO',
+    debit: 'DÉBITO',
+    credit: 'CRÉDITO',
+    transfer: 'TRANSFERENCIA'
+  }[paymentMethod] || paymentMethod.toUpperCase()
+
+  const printKitchenTicket = () => {
+    const productLines = cart
+      .map((item) => {
+        return `
+          <div class="item">
+            <div class="qty">${item.quantity} x</div>
+            <div class="name">${item.name}</div>
+          </div>
+        `
+      })
+      .join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>Comanda Cocina</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              color: #000;
+              background: #fff;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .title {
+              font-size: 24px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .subtitle {
+              font-size: 14px;
+              font-weight: 700;
+              margin-top: 4px;
+            }
+
+            .line {
+              border-top: 2px dashed #000;
+              margin: 10px 0;
+            }
+
+            .item {
+              display: flex;
+              gap: 8px;
+              font-size: 20px;
+              font-weight: 900;
+              margin: 12px 0;
+            }
+
+            .qty {
+              min-width: 42px;
+            }
+
+            .name {
+              flex: 1;
+            }
+
+            .notes-title {
+              font-size: 16px;
+              font-weight: 900;
+              margin-bottom: 4px;
+            }
+
+            .notes {
+              font-size: 17px;
+              font-weight: 900;
+              white-space: pre-wrap;
+            }
+
+            .footer {
+              font-size: 12px;
+              margin-top: 10px;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="title">COMANDA</h1>
+            <div class="subtitle">COCINA - MOSTRADOR</div>
+            <div class="footer">${new Date().toLocaleString('es-CL')}</div>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="notes-title">NOTAS DEL PEDIDO:</div>
+          <div class="notes">${notes.trim() || 'SIN NOTAS'}</div>
+
+          <div class="line"></div>
+
+          <div class="center footer">AMERICAN BURGER</div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 400)
+  }
+
+  const printCustomerReceipt = () => {
+    const iva = Math.round(total * 0.19)
+    const neto = total - iva
+
+    const productLines = cart
+      .map((item) => {
+        const lineTotal = Number(item.price || 0) * Number(item.quantity || 0)
+
+        return `
+          <div class="product">
+            <div>
+              <strong>${item.quantity} x ${item.name}</strong>
+              <br />
+              <span>${money(item.price)} c/u</span>
+            </div>
+            <div class="right">${money(lineTotal)}</div>
+          </div>
+        `
+      })
+      .join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>Recibo Cliente</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              font-size: 12px;
+              color: #000;
+              background: #fff;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .brand {
+              font-size: 22px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .small {
+              font-size: 11px;
+            }
+
+            .line {
+              border-top: 1px dashed #000;
+              margin: 8px 0;
+            }
+
+            .row,
+            .product {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+              margin: 6px 0;
+            }
+
+            .right {
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .total {
+              font-size: 18px;
+              font-weight: 900;
+            }
+
+            .thanks {
+              font-size: 12px;
+              margin-top: 10px;
+              text-align: center;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="brand">AMERICAN BURGER</h1>
+            <div>ARICA - CHILE</div>
+            <div class="small">RECIBO DE COMPRA</div>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>Fecha</span>
+            <span>${new Date().toLocaleDateString('es-CL')}</span>
+          </div>
+
+          <div class="row">
+            <span>Hora</span>
+            <span>${new Date().toLocaleTimeString('es-CL')}</span>
+          </div>
+
+          <div class="row">
+            <span>Tipo</span>
+            <span>Mostrador</span>
+          </div>
+
+          <div class="row">
+            <span>Pago</span>
+            <span>${paymentMethodText}</span>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>Neto</span>
+            <span>${money(neto)}</span>
+          </div>
+
+          <div class="row">
+            <span>IVA 19%</span>
+            <span>${money(iva)}</span>
+          </div>
+
+          <div class="row total">
+            <span>TOTAL</span>
+            <span>${money(total)}</span>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="thanks">
+            Gracias por tu compra<br />
+            🍔 American Burger 🍔
+          </div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 900)
+  }
+
   const submitOrder = async () => {
     setSaving(true)
     setError('')
@@ -336,7 +588,13 @@ const POSMostrador = () => {
         body: JSON.stringify(payload)
       })
 
-      setMessage('Venta de mostrador registrada correctamente')
+      printKitchenTicket()
+
+      setTimeout(() => {
+        printCustomerReceipt()
+      }, 900)
+
+      setMessage('Venta registrada correctamente. Comanda y recibo enviados a impresión.')
       clearOrder()
       loadData()
     } catch (err) {
@@ -347,26 +605,7 @@ const POSMostrador = () => {
   }
 
   const printTicket = () => {
-    const lines = cart
-      .map((item) => `${item.quantity} x ${item.name} - ${money(item.price * item.quantity)}`)
-      .join('\n')
-
-    const ticket = `
-AMERICAN BURGER
-VENTA MOSTRADOR
-
-${lines}
-
-TOTAL: ${money(total)}
-PAGO: ${paymentMethod.toUpperCase()}
-`
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-
-    printWindow.document.write(`<pre style="font-size:14px;font-family:monospace">${ticket}</pre>`)
-    printWindow.document.close()
-    printWindow.print()
+    printCustomerReceipt()
   }
 
   return (
@@ -479,6 +718,7 @@ PAGO: ${paymentMethod.toUpperCase()}
                           <h3 className="font-poppins font-bold text-lg">
                             {product.name}
                           </h3>
+
                           <span className="text-xs bg-gray-100 px-2 py-1 rounded-full h-fit">
                             {categoryLabel(productCategoryName(product))}
                           </span>
@@ -595,7 +835,7 @@ PAGO: ${paymentMethod.toUpperCase()}
                   disabled={cart.length === 0}
                   className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100 disabled:opacity-50"
                 >
-                  Imprimir ticket
+                  Imprimir recibo cliente
                 </button>
 
                 <button
