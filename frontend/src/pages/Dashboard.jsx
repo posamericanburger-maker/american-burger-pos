@@ -14,11 +14,24 @@ const money = (value) =>
     maximumFractionDigits: 0
   }).format(Number(value || 0))
 
+const paymentLabel = (method) => ({
+  cash: 'Efectivo',
+  debit: 'Débito',
+  credit: 'Crédito',
+  transfer: 'Transferencia'
+}[method] || method || 'Sin medio')
+
+const typeLabel = (type) => ({
+  counter: 'Mostrador',
+  delivery: 'Delivery'
+}[type] || type || 'Mostrador')
+
 const Dashboard = () => {
   const { user } = useAuth()
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
   const [cashSessions, setCashSessions] = useState([])
+  const [selectedOrder, setSelectedOrder] = useState(null)
 
   const getToken = () => localStorage.getItem('token') || ''
 
@@ -74,8 +87,6 @@ const Dashboard = () => {
 
   const exportExcel = () => {
     const detalleVentas = []
-    const resumenPorTipo = []
-    const resumenPorPago = []
 
     orders.forEach((order) => {
       const fecha = new Date(order.created_at)
@@ -85,41 +96,22 @@ const Dashboard = () => {
         detalleVentas.push({
           Fecha: fecha.toLocaleDateString('es-CL'),
           Hora: fecha.toLocaleTimeString('es-CL'),
-          TipoVenta: order.order_type || order.type || 'Mostrador',
-          MedioPago: order.payment_method || '',
+          TipoVenta: typeLabel(order.order_type || order.type),
+          MedioPago: paymentLabel(order.payment_method),
           Producto: item.name || item.product_name || item.name_snapshot || '',
           Categoria: item.category_name || 'Sin categoría',
           Cantidad: Number(item.quantity || 1),
           PrecioUnitario: Number(item.unit_price || item.price || 0),
-          Subtotal: Number(item.subtotal || 0)
+          Subtotal: Number(item.subtotal || 0),
+          TotalPedido: Number(order.total || order.total_amount || 0)
         })
       })
     })
 
-    Object.entries(salesByType).forEach(([tipo, total]) => {
-      resumenPorTipo.push({
-        TipoVenta: tipo === 'delivery' ? 'Delivery' : 'Mostrador',
-        Total: Number(total)
-      })
-    })
-
-    Object.entries(salesByPayment).forEach(([medio, total]) => {
-      resumenPorPago.push({
-        MedioPago: medio,
-        Total: Number(total)
-      })
-    })
-
     const workbook = XLSX.utils.book_new()
-
     const wsDetalle = XLSX.utils.json_to_sheet(detalleVentas)
+
     XLSX.utils.book_append_sheet(workbook, wsDetalle, 'Detalle Ventas')
-
-    const wsTipo = XLSX.utils.json_to_sheet(resumenPorTipo)
-    XLSX.utils.book_append_sheet(workbook, wsTipo, 'Resumen Tipo')
-
-    const wsPago = XLSX.utils.json_to_sheet(resumenPorPago)
-    XLSX.utils.book_append_sheet(workbook, wsPago, 'Resumen Pago')
 
     const excelBuffer = XLSX.write(workbook, {
       bookType: 'xlsx',
@@ -131,6 +123,151 @@ const Dashboard = () => {
     })
 
     saveAs(blob, `Ventas_American_Burger_${Date.now()}.xlsx`)
+  }
+
+  const printCustomerReceipt = (order) => {
+    const items = order.items || []
+    const total = Number(order.total || order.total_amount || 0)
+
+    const productLines = items.map((item) => {
+      const quantity = Number(item.quantity || 1)
+      const price = Number(item.unit_price || item.price || 0)
+      const lineTotal = Number(item.subtotal || quantity * price)
+
+      return `
+        <div class="product">
+          <div>
+            <strong>${quantity} x ${item.name || item.product_name || item.name_snapshot || 'Producto'}</strong>
+            <br />
+            <span>${money(price)} c/u</span>
+          </div>
+          <div class="right">${money(lineTotal)}</div>
+        </div>
+      `
+    }).join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>Recibo Cliente</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              font-size: 12px;
+              color: #000;
+              background: #fff;
+            }
+
+            .center { text-align: center; }
+
+            .brand {
+              font-size: 22px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .small { font-size: 11px; }
+
+            .line {
+              border-top: 1px dashed #000;
+              margin: 8px 0;
+            }
+
+            .row,
+            .product {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+              margin: 6px 0;
+            }
+
+            .right {
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .total {
+              font-size: 18px;
+              font-weight: 900;
+            }
+
+            .thanks {
+              font-size: 12px;
+              margin-top: 10px;
+              text-align: center;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="brand">AMERICAN BURGER</h1>
+            <div>ARICA - CHILE</div>
+            <div class="small">RECIBO DE COMPRA</div>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>Fecha</span>
+            <span>${new Date(order.created_at).toLocaleDateString('es-CL')}</span>
+          </div>
+
+          <div class="row">
+            <span>Hora</span>
+            <span>${new Date(order.created_at).toLocaleTimeString('es-CL')}</span>
+          </div>
+
+          <div class="row">
+            <span>Tipo</span>
+            <span>${typeLabel(order.order_type || order.type)}</span>
+          </div>
+
+          <div class="row">
+            <span>Pago</span>
+            <span>${paymentLabel(order.payment_method)}</span>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="row total">
+            <span>TOTAL</span>
+            <span>${money(total)}</span>
+          </div>
+
+          <div class="center small">
+            Precios con IVA incluido
+          </div>
+
+          <div class="line"></div>
+
+          <div class="thanks">
+            Gracias por tu compra<br />
+            🍔 American Burger 🍔
+          </div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 500)
   }
 
   return (
@@ -182,7 +319,7 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               {Object.entries(salesByType).map(([type, total]) => (
                 <div key={type} className="border rounded-lg p-4">
-                  <p>{type === 'delivery' ? 'Delivery' : 'Mostrador'}</p>
+                  <p>{typeLabel(type)}</p>
                   <h3 className="text-2xl font-bold">{money(total)}</h3>
                 </div>
               ))}
@@ -193,11 +330,93 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {Object.entries(salesByPayment).map(([method, total]) => (
                 <div key={method} className="border rounded-lg p-4">
-                  <p>{method}</p>
+                  <p>{paymentLabel(method)}</p>
                   <h3 className="text-2xl font-bold">{money(total)}</h3>
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="card">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-2xl font-bold">Registro de ventas</h2>
+                <p className="text-gray-600">
+                  Selecciona una venta para ver sus productos e imprimir el recibo del cliente.
+                </p>
+              </div>
+
+              <button
+                onClick={loadDashboard}
+                className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
+              >
+                Actualizar
+              </button>
+            </div>
+
+            {orders.length === 0 ? (
+              <div className="text-center text-gray-500 py-10">
+                No hay ventas registradas.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b text-gray-500">
+                      <th className="py-3">Fecha</th>
+                      <th>Hora</th>
+                      <th>Tipo</th>
+                      <th>Pago</th>
+                      <th>Productos</th>
+                      <th>Total</th>
+                      <th className="text-right">Acciones</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {orders.map((order) => {
+                      const date = new Date(order.created_at)
+                      const items = order.items || []
+                      const total = Number(order.total || order.total_amount || 0)
+
+                      return (
+                        <tr key={order.id} className="border-b">
+                          <td className="py-3">
+                            {date.toLocaleDateString('es-CL')}
+                          </td>
+
+                          <td>{date.toLocaleTimeString('es-CL')}</td>
+
+                          <td>{typeLabel(order.order_type || order.type)}</td>
+
+                          <td>{paymentLabel(order.payment_method)}</td>
+
+                          <td>{items.length}</td>
+
+                          <td className="font-bold">{money(total)}</td>
+
+                          <td className="text-right space-x-2">
+                            <button
+                              onClick={() => setSelectedOrder(order)}
+                              className="bg-yellow-400 text-black px-3 py-2 rounded font-bold"
+                            >
+                              Ver
+                            </button>
+
+                            <button
+                              onClick={() => printCustomerReceipt(order)}
+                              className="bg-black text-yellow-400 px-3 py-2 rounded font-bold"
+                            >
+                              Imprimir
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="card">
@@ -208,15 +427,110 @@ const Dashboard = () => {
             <p className="text-gray-600 mt-2">
               Sistema POS conectado a Supabase y Render.
             </p>
-
-            <button
-              onClick={loadDashboard}
-              className="mt-4 bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
-            >
-              Actualizar
-            </button>
           </div>
         </div>
+
+        {selectedOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold">Detalle de venta</h2>
+                  <p className="text-gray-600">
+                    {new Date(selectedOrder.created_at).toLocaleString('es-CL')}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-red-600 font-bold text-xl"
+                >
+                  X
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Tipo</p>
+                  <h3 className="font-bold">
+                    {typeLabel(selectedOrder.order_type || selectedOrder.type)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Medio de pago</p>
+                  <h3 className="font-bold">
+                    {paymentLabel(selectedOrder.payment_method)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Total</p>
+                  <h3 className="font-bold">
+                    {money(selectedOrder.total || selectedOrder.total_amount || 0)}
+                  </h3>
+                </div>
+              </div>
+
+              <h3 className="text-xl font-bold mb-3">Productos comprados</h3>
+
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b text-gray-500">
+                      <th className="py-3">Producto</th>
+                      <th>Categoría</th>
+                      <th>Cantidad</th>
+                      <th>Precio</th>
+                      <th>Subtotal</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {(selectedOrder.items || []).map((item) => (
+                      <tr key={item.id} className="border-b">
+                        <td className="py-3 font-semibold">
+                          {item.name || item.product_name || item.name_snapshot}
+                        </td>
+
+                        <td>{item.category_name || 'Sin categoría'}</td>
+
+                        <td>{item.quantity}</td>
+
+                        <td>{money(item.unit_price || item.price || 0)}</td>
+
+                        <td>{money(item.subtotal || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {selectedOrder.notes && (
+                <div className="border rounded-lg p-4 mb-6">
+                  <p className="text-gray-500">Notas</p>
+                  <p className="font-semibold">{selectedOrder.notes}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="border px-5 py-3 rounded-lg"
+                >
+                  Cerrar
+                </button>
+
+                <button
+                  onClick={() => printCustomerReceipt(selectedOrder)}
+                  className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
+                >
+                  Imprimir recibo cliente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
