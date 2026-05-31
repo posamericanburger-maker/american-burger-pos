@@ -4,6 +4,10 @@ import { verifyToken, verifyRole } from '../middleware/auth.js'
 
 const router = express.Router()
 
+const cleanPhone = (phone = '') => {
+  return String(phone).replace(/[^0-9]/g, '')
+}
+
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -51,6 +55,25 @@ router.post('/', verifyToken, verifyRole(['cajero', 'admin']), async (req, res) 
       })
     }
 
+    if (customer?.phone) {
+      const cleanCustomerPhone = cleanPhone(customer.phone)
+
+      if (cleanCustomerPhone) {
+        await supabase
+          .from('customers')
+          .upsert(
+            {
+              name: customer.name || '',
+              phone: cleanCustomerPhone,
+              address: customer.address || '',
+              reference: customer.reference || '',
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'phone' }
+          )
+      }
+    }
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -63,7 +86,7 @@ router.post('/', verifyToken, verifyRole(['cajero', 'admin']), async (req, res) 
         total: Number(total || total_amount || 0),
         total_amount: Number(total_amount || total || 0),
         customer_name: customer?.name || null,
-        customer_phone: customer?.phone || null,
+        customer_phone: customer?.phone ? cleanPhone(customer.phone) : null,
         customer_address: customer?.address || null,
         notes,
         user_id: req.user?.id || null
