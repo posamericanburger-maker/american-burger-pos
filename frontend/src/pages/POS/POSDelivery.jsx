@@ -12,32 +12,64 @@ const money = (value) => {
   }).format(Number(value || 0))
 }
 
-const getToken = () => {
-  return (
-    localStorage.getItem('token') ||
-    localStorage.getItem('authToken') ||
-    localStorage.getItem('access_token') ||
-    ''
-  )
-}
+const getToken = () =>
+  localStorage.getItem('token') ||
+  localStorage.getItem('authToken') ||
+  localStorage.getItem('access_token') ||
+  ''
 
 const getList = (data, keys = []) => {
   if (Array.isArray(data)) return data
-
   for (const key of keys) {
     if (Array.isArray(data?.[key])) return data[key]
   }
-
   if (Array.isArray(data?.data)) return data.data
   if (Array.isArray(data?.items)) return data.items
-
   return []
+}
+
+const normalizeText = (value = '') =>
+  String(value)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const categoryLabel = (name = '') => {
+  const normalized = normalizeText(name)
+
+  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) return '🍔 HAMBURGUESAS'
+  if (normalized.includes('PAPA') || normalized.includes('SNACK') || normalized.includes('FRITA')) return '🍟 PAPAS & SNACKS'
+  if (normalized.includes('BEBIDA')) return '🥤 BEBIDAS'
+  if (normalized.includes('INGREDIENTE') || normalized.includes('EXTRA') || normalized.includes('+')) return '➕ INGREDIENTES'
+  if (normalized.includes('POLLO') || normalized.includes('CHICKEN') || normalized.includes('CRISPY') || normalized.includes('ALITA') || normalized.includes('TENDER')) return '🍗 POLLO CRISPY'
+  if (normalized.includes('COMBO')) return '🎯 COMBOS'
+
+  return name
+}
+
+const categoryOrderIndex = (name = '') => {
+  const label = categoryLabel(name)
+
+  const order = [
+    '🍔 HAMBURGUESAS',
+    '🍟 PAPAS & SNACKS',
+    '🥤 BEBIDAS',
+    '➕ INGREDIENTES',
+    '🍗 POLLO CRISPY',
+    '🎯 COMBOS'
+  ]
+
+  const index = order.indexOf(label)
+  return index === -1 ? 999 : index
 }
 
 const POSDelivery = () => {
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [cart, setCart] = useState([])
   const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -55,7 +87,6 @@ const POSDelivery = () => {
 
   const headers = useMemo(() => {
     const token = getToken()
-
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -87,15 +118,25 @@ const POSDelivery = () => {
     return data
   }
 
-  const loadProducts = async () => {
+  const loadData = async () => {
     try {
       setLoading(true)
       setError('')
 
-      const data = await request('/products')
-      const list = getList(data, ['products'])
+      const [productsData, categoriesData] = await Promise.allSettled([
+        request('/products'),
+        request('/categories')
+      ])
 
-      setProducts(list.filter((product) => product.active !== false))
+      if (productsData.status === 'fulfilled') {
+        const list = getList(productsData.value, ['products'])
+        setProducts(list.filter((product) => product.active !== false))
+      }
+
+      if (categoriesData.status === 'fulfilled') {
+        const list = getList(categoriesData.value, ['categories'])
+        setCategories(list.filter((category) => category.active !== false))
+      }
     } catch (err) {
       setError(err.message || 'No se pudieron cargar productos')
     } finally {
@@ -104,12 +145,39 @@ const POSDelivery = () => {
   }
 
   useEffect(() => {
-    loadProducts()
+    loadData()
   }, [])
+
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const orderA = categoryOrderIndex(a.name)
+      const orderB = categoryOrderIndex(b.name)
+
+      if (orderA !== orderB) return orderA - orderB
+
+      return normalizeText(a.name).localeCompare(normalizeText(b.name))
+    })
+  }, [categories])
+
+  const productCategoryName = (product) => {
+    if (product.category?.name) return product.category.name
+    if (product.category_name) return product.category_name
+
+    const category = categories.find((item) => item.id === product.category_id)
+    return category?.name || 'Sin categoría'
+  }
 
   const filteredProducts = products.filter((product) => {
     const text = `${product.name || ''} ${product.description || ''}`.toLowerCase()
-    return text.includes(search.toLowerCase())
+    const matchesSearch = text.includes(search.toLowerCase())
+
+    const categoryName = productCategoryName(product)
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      product.category_id === selectedCategory ||
+      categoryName === selectedCategory
+
+    return matchesSearch && matchesCategory
   })
 
   const addToCart = (product) => {
@@ -130,7 +198,8 @@ const POSDelivery = () => {
           id: product.id,
           name: product.name,
           price: Number(product.price || 0),
-          quantity: 1
+          quantity: 1,
+          category_name: productCategoryName(product)
         }
       ]
     })
@@ -194,14 +263,12 @@ const POSDelivery = () => {
 
   const printKitchenTicket = () => {
     const productLines = cart
-      .map((item) => {
-        return `
-          <div class="item">
-            <div class="qty">${item.quantity} x</div>
-            <div class="name">${item.name}</div>
-          </div>
-        `
-      })
+      .map((item) => `
+        <div class="item">
+          <div class="qty">${item.quantity} x</div>
+          <div class="name">${item.name}</div>
+        </div>
+      `)
       .join('')
 
     const html = `
@@ -210,7 +277,6 @@ const POSDelivery = () => {
           <title>Comanda Delivery</title>
           <style>
             @page { size: 80mm auto; margin: 0; }
-
             body {
               width: 80mm;
               margin: 0;
@@ -219,26 +285,10 @@ const POSDelivery = () => {
               color: #000;
               background: #fff;
             }
-
             .center { text-align: center; }
-
-            .title {
-              font-size: 24px;
-              font-weight: 900;
-              margin: 0;
-            }
-
-            .subtitle {
-              font-size: 14px;
-              font-weight: 700;
-              margin-top: 4px;
-            }
-
-            .line {
-              border-top: 2px dashed #000;
-              margin: 10px 0;
-            }
-
+            .title { font-size: 24px; font-weight: 900; margin: 0; }
+            .subtitle { font-size: 14px; font-weight: 700; margin-top: 4px; }
+            .line { border-top: 2px dashed #000; margin: 10px 0; }
             .item {
               display: flex;
               gap: 8px;
@@ -246,29 +296,13 @@ const POSDelivery = () => {
               font-weight: 900;
               margin: 12px 0;
             }
-
             .qty { min-width: 42px; }
             .name { flex: 1; }
-
-            .notes-title {
-              font-size: 16px;
-              font-weight: 900;
-              margin-bottom: 4px;
-            }
-
-            .notes {
-              font-size: 17px;
-              font-weight: 900;
-              white-space: pre-wrap;
-            }
-
-            .footer {
-              font-size: 12px;
-              margin-top: 10px;
-            }
+            .notes-title { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
+            .notes { font-size: 17px; font-weight: 900; white-space: pre-wrap; }
+            .footer { font-size: 12px; margin-top: 10px; }
           </style>
         </head>
-
         <body>
           <div class="center">
             <h1 class="title">COMANDA</h1>
@@ -277,16 +311,13 @@ const POSDelivery = () => {
           </div>
 
           <div class="line"></div>
-
           ${productLines}
-
           <div class="line"></div>
 
           <div class="notes-title">NOTAS DEL PEDIDO:</div>
           <div class="notes">${customer.notes.trim() || 'SIN NOTAS'}</div>
 
           <div class="line"></div>
-
           <div class="center footer">AMERICAN BURGER</div>
         </body>
       </html>
@@ -294,7 +325,6 @@ const POSDelivery = () => {
 
     const win = window.open('', '_blank')
     if (!win) return
-
     win.document.write(html)
     win.document.close()
     win.focus()
@@ -328,7 +358,6 @@ const POSDelivery = () => {
           <title>Guía Delivery</title>
           <style>
             @page { size: 80mm auto; margin: 0; }
-
             body {
               width: 80mm;
               margin: 0;
@@ -338,57 +367,21 @@ const POSDelivery = () => {
               color: #000;
               background: #fff;
             }
-
             .center { text-align: center; }
-
-            .brand {
-              font-size: 22px;
-              font-weight: 900;
-              margin: 0;
-            }
-
+            .brand { font-size: 22px; font-weight: 900; margin: 0; }
             .small { font-size: 11px; }
-
-            .line {
-              border-top: 1px dashed #000;
-              margin: 8px 0;
-            }
-
-            .section-title {
-              font-size: 13px;
-              font-weight: 900;
-              margin-bottom: 4px;
-            }
-
-            .row,
-            .product {
+            .line { border-top: 1px dashed #000; margin: 8px 0; }
+            .section-title { font-size: 13px; font-weight: 900; margin-bottom: 4px; }
+            .row, .product {
               display: flex;
               justify-content: space-between;
               gap: 8px;
               margin: 6px 0;
             }
-
-            .right {
-              text-align: right;
-              white-space: nowrap;
-            }
-
-            .total {
-              font-size: 18px;
-              font-weight: 900;
-            }
-
-            .important {
-              font-size: 15px;
-              font-weight: 900;
-              white-space: pre-wrap;
-            }
-
-            .thanks {
-              font-size: 12px;
-              margin-top: 10px;
-              text-align: center;
-            }
+            .right { text-align: right; white-space: nowrap; }
+            .total { font-size: 18px; font-weight: 900; }
+            .important { font-size: 15px; font-weight: 900; white-space: pre-wrap; }
+            .thanks { font-size: 12px; margin-top: 10px; text-align: center; }
           </style>
         </head>
 
@@ -438,9 +431,7 @@ const POSDelivery = () => {
             <span>${money(total)}</span>
           </div>
 
-          <div class="center small">
-            Precios con IVA incluido
-          </div>
+          <div class="center small">Precios con IVA incluido</div>
 
           <div class="line"></div>
 
@@ -466,7 +457,6 @@ const POSDelivery = () => {
 
     const win = window.open('', '_blank')
     if (!win) return
-
     win.document.write(html)
     win.document.close()
     win.focus()
@@ -482,21 +472,10 @@ const POSDelivery = () => {
     setMessage('')
 
     try {
-      if (cart.length === 0) {
-        throw new Error('Agrega productos al pedido')
-      }
-
-      if (!customer.name.trim()) {
-        throw new Error('Ingresa el nombre del cliente')
-      }
-
-      if (!customer.phone.trim()) {
-        throw new Error('Ingresa el teléfono del cliente')
-      }
-
-      if (!customer.address.trim()) {
-        throw new Error('Ingresa la dirección de entrega')
-      }
+      if (cart.length === 0) throw new Error('Agrega productos al pedido')
+      if (!customer.name.trim()) throw new Error('Ingresa el nombre del cliente')
+      if (!customer.phone.trim()) throw new Error('Ingresa el teléfono del cliente')
+      if (!customer.address.trim()) throw new Error('Ingresa la dirección de entrega')
 
       const payload = {
         type: 'delivery',
@@ -520,7 +499,8 @@ const POSDelivery = () => {
           quantity: Number(item.quantity || 1),
           unit_price: Number(item.price || 0),
           price: Number(item.price || 0),
-          subtotal: Number(item.price || 0) * Number(item.quantity || 1)
+          subtotal: Number(item.price || 0) * Number(item.quantity || 1),
+          category_name: item.category_name || 'Sin categoría'
         }))
       }
 
@@ -548,7 +528,6 @@ const POSDelivery = () => {
       const quantity = Number(item.quantity || 1)
       const price = Number(item.price || 0)
       const lineTotal = quantity * price
-
       return `• ${quantity} x ${item.name} = ${money(lineTotal)}`
     })
     .join('\n')
@@ -616,7 +595,7 @@ Gracias por preferir American Burger 🍔
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="card xl:col-span-2">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                 <div>
                   <h2 className="text-2xl font-poppins font-bold">
                     Productos para delivery
@@ -632,6 +611,39 @@ Gracias por preferir American Burger 🍔
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Buscar producto..."
                 />
+              </div>
+
+              <div className="mb-6">
+                <h3 className="font-bold mb-3">Categorías rápidas</h3>
+
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('all')}
+                    className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                      selectedCategory === 'all'
+                        ? 'bg-black text-yellow-400 border-black'
+                        : 'bg-white text-black border-gray-300'
+                    }`}
+                  >
+                    Todos
+                  </button>
+
+                  {sortedCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(category.id)}
+                      className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                        selectedCategory === category.id
+                          ? 'bg-black text-yellow-400 border-black'
+                          : 'bg-yellow-50 text-black border-yellow-300'
+                      }`}
+                    >
+                      {categoryLabel(category.name)}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {loading ? (
@@ -651,9 +663,15 @@ Gracias por preferir American Burger 🍔
                       onClick={() => addToCart(product)}
                       className="border rounded-xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400 transition-all"
                     >
-                      <h3 className="font-poppins font-bold text-lg">
-                        {product.name}
-                      </h3>
+                      <div className="flex justify-between gap-3">
+                        <h3 className="font-poppins font-bold text-lg">
+                          {product.name}
+                        </h3>
+
+                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full h-fit">
+                          {categoryLabel(productCategoryName(product))}
+                        </span>
+                      </div>
 
                       {product.description && (
                         <p className="text-sm text-gray-500 line-clamp-2 mt-1">
