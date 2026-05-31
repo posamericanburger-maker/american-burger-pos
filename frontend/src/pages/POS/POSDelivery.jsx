@@ -163,6 +163,13 @@ const POSDelivery = () => {
   const deliveryFee = Number(customer.deliveryFee || 0)
   const total = subtotal + deliveryFee
 
+  const paymentMethodText = {
+    cash: 'Efectivo',
+    debit: 'Débito',
+    credit: 'Crédito',
+    transfer: 'Transferencia'
+  }[customer.paymentMethod] || customer.paymentMethod
+
   const handleCustomerChange = (event) => {
     const { name, value } = event.target
 
@@ -183,6 +190,290 @@ const POSDelivery = () => {
       paymentMethod: 'cash',
       notes: ''
     })
+  }
+
+  const printKitchenTicket = () => {
+    const productLines = cart
+      .map((item) => {
+        return `
+          <div class="item">
+            <div class="qty">${item.quantity} x</div>
+            <div class="name">${item.name}</div>
+          </div>
+        `
+      })
+      .join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>Comanda Delivery</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              color: #000;
+              background: #fff;
+            }
+
+            .center { text-align: center; }
+
+            .title {
+              font-size: 24px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .subtitle {
+              font-size: 14px;
+              font-weight: 700;
+              margin-top: 4px;
+            }
+
+            .line {
+              border-top: 2px dashed #000;
+              margin: 10px 0;
+            }
+
+            .item {
+              display: flex;
+              gap: 8px;
+              font-size: 20px;
+              font-weight: 900;
+              margin: 12px 0;
+            }
+
+            .qty { min-width: 42px; }
+            .name { flex: 1; }
+
+            .notes-title {
+              font-size: 16px;
+              font-weight: 900;
+              margin-bottom: 4px;
+            }
+
+            .notes {
+              font-size: 17px;
+              font-weight: 900;
+              white-space: pre-wrap;
+            }
+
+            .footer {
+              font-size: 12px;
+              margin-top: 10px;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="title">COMANDA</h1>
+            <div class="subtitle">COCINA - DELIVERY</div>
+            <div class="footer">${new Date().toLocaleString('es-CL')}</div>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="notes-title">NOTAS DEL PEDIDO:</div>
+          <div class="notes">${customer.notes.trim() || 'SIN NOTAS'}</div>
+
+          <div class="line"></div>
+
+          <div class="center footer">AMERICAN BURGER</div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 400)
+  }
+
+  const printDeliveryGuide = () => {
+    const productLines = cart
+      .map((item) => {
+        const lineTotal = Number(item.price || 0) * Number(item.quantity || 0)
+
+        return `
+          <div class="product">
+            <div>
+              <strong>${item.quantity} x ${item.name}</strong>
+              <br />
+              <span>${money(item.price)} c/u</span>
+            </div>
+            <div class="right">${money(lineTotal)}</div>
+          </div>
+        `
+      })
+      .join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>Guía Delivery</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              font-size: 12px;
+              color: #000;
+              background: #fff;
+            }
+
+            .center { text-align: center; }
+
+            .brand {
+              font-size: 22px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .small { font-size: 11px; }
+
+            .line {
+              border-top: 1px dashed #000;
+              margin: 8px 0;
+            }
+
+            .section-title {
+              font-size: 13px;
+              font-weight: 900;
+              margin-bottom: 4px;
+            }
+
+            .row,
+            .product {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+              margin: 6px 0;
+            }
+
+            .right {
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .total {
+              font-size: 18px;
+              font-weight: 900;
+            }
+
+            .important {
+              font-size: 15px;
+              font-weight: 900;
+              white-space: pre-wrap;
+            }
+
+            .thanks {
+              font-size: 12px;
+              margin-top: 10px;
+              text-align: center;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="brand">AMERICAN BURGER</h1>
+            <div>ARICA - CHILE</div>
+            <div class="small">GUÍA DE DESPACHO DELIVERY</div>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="section-title">DATOS DEL NEGOCIO</div>
+          <div>American Burger Arica</div>
+          <div>Av. Santa María 2248</div>
+          <div>Arica - Chile</div>
+
+          <div class="line"></div>
+
+          <div class="section-title">DATOS DEL CLIENTE</div>
+          <div><strong>Nombre:</strong> ${customer.name || ''}</div>
+          <div><strong>WhatsApp:</strong> ${customer.phone || ''}</div>
+          <div><strong>Dirección:</strong></div>
+          <div class="important">${customer.address || ''}</div>
+          <div><strong>Referencia:</strong></div>
+          <div>${customer.reference || 'Sin referencia'}</div>
+
+          <div class="line"></div>
+
+          <div class="section-title">PRODUCTOS</div>
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>Subtotal</span>
+            <strong>${money(subtotal)}</strong>
+          </div>
+
+          <div class="row">
+            <span>Delivery</span>
+            <strong>${money(deliveryFee)}</strong>
+          </div>
+
+          <div class="row total">
+            <span>TOTAL</span>
+            <span>${money(total)}</span>
+          </div>
+
+          <div class="center small">
+            Precios con IVA incluido
+          </div>
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>Forma de pago</span>
+            <strong>${paymentMethodText}</strong>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="section-title">NOTAS</div>
+          <div>${customer.notes || 'Sin observaciones'}</div>
+
+          <div class="line"></div>
+
+          <div class="thanks">
+            Entregar pedido al cliente indicado<br />
+            🍔 American Burger 🍔
+          </div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 900)
   }
 
   const submitOrder = async () => {
@@ -238,7 +529,13 @@ const POSDelivery = () => {
         body: JSON.stringify(payload)
       })
 
-      setMessage('Pedido delivery registrado correctamente')
+      printKitchenTicket()
+
+      setTimeout(() => {
+        printDeliveryGuide()
+      }, 900)
+
+      setMessage('Pedido delivery registrado correctamente. Comanda y guía enviadas a impresión.')
     } catch (err) {
       setError(err.message || 'No se pudo registrar el pedido')
     } finally {
@@ -255,13 +552,6 @@ const POSDelivery = () => {
       return `• ${quantity} x ${item.name} = ${money(lineTotal)}`
     })
     .join('\n')
-
-  const paymentMethodText = {
-    cash: 'Efectivo',
-    debit: 'Débito',
-    credit: 'Crédito',
-    transfer: 'Transferencia'
-  }[customer.paymentMethod] || customer.paymentMethod
 
   const whatsappMessage = encodeURIComponent(`
 🍔 AMERICAN BURGER
