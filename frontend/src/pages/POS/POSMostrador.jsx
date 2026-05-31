@@ -36,8 +36,11 @@ const getList = (data, keys = []) => {
 
 const POSMostrador = () => {
   const [products, setProducts] = useState([])
+  const [orders, setOrders] = useState([])
+  const [categories, setCategories] = useState([])
   const [cart, setCart] = useState([])
   const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
@@ -79,29 +82,89 @@ const POSMostrador = () => {
     return data
   }
 
-  const loadProducts = async () => {
+  const loadData = async () => {
     try {
       setLoading(true)
       setError('')
 
-      const data = await request('/products')
-      const list = getList(data, ['products'])
+      const [productsData, categoriesData, ordersData] = await Promise.allSettled([
+        request('/products'),
+        request('/categories'),
+        request('/orders')
+      ])
 
-      setProducts(list.filter((product) => product.active !== false))
+      if (productsData.status === 'fulfilled') {
+        const list = getList(productsData.value, ['products'])
+        setProducts(list.filter((product) => product.active !== false))
+      }
+
+      if (categoriesData.status === 'fulfilled') {
+        const list = getList(categoriesData.value, ['categories'])
+        setCategories(list.filter((category) => category.active !== false))
+      }
+
+      if (ordersData.status === 'fulfilled') {
+        const list = getList(ordersData.value, ['orders'])
+        setOrders(list)
+      }
     } catch (err) {
-      setError(err.message || 'No se pudieron cargar productos')
+      setError(err.message || 'No se pudieron cargar datos del POS')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadProducts()
+    loadData()
   }, [])
+
+  const productCategoryName = (product) => {
+    if (product.category?.name) return product.category.name
+    if (product.category_name) return product.category_name
+
+    const category = categories.find((item) => item.id === product.category_id)
+    return category?.name || 'Sin categoría'
+  }
+
+  const topProducts = useMemo(() => {
+    const salesMap = {}
+
+    orders.forEach((order) => {
+      const items = order.items || order.order_items || []
+
+      items.forEach((item) => {
+        const name = item.name || item.product_name || item.name_snapshot || 'Producto'
+        const quantity = Number(item.quantity || 1)
+
+        salesMap[name] = (salesMap[name] || 0) + quantity
+      })
+    })
+
+    return Object.entries(salesMap)
+      .map(([name, quantity]) => {
+        const product = products.find((item) => item.name === name)
+        return {
+          name,
+          quantity,
+          product
+        }
+      })
+      .filter((item) => item.product)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5)
+  }, [orders, products])
 
   const filteredProducts = products.filter((product) => {
     const text = `${product.name || ''} ${product.description || ''}`.toLowerCase()
-    return text.includes(search.toLowerCase())
+    const matchesSearch = text.includes(search.toLowerCase())
+
+    const categoryName = productCategoryName(product)
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      product.category_id === selectedCategory ||
+      categoryName === selectedCategory
+
+    return matchesSearch && matchesCategory
   })
 
   const addToCart = (product) => {
@@ -122,7 +185,8 @@ const POSMostrador = () => {
           id: product.id,
           name: product.name,
           price: Number(product.price || 0),
-          quantity: 1
+          quantity: 1,
+          category_name: productCategoryName(product)
         }
       ]
     })
@@ -183,7 +247,8 @@ const POSMostrador = () => {
           quantity: Number(item.quantity || 1),
           unit_price: Number(item.price || 0),
           price: Number(item.price || 0),
-          subtotal: Number(item.price || 0) * Number(item.quantity || 1)
+          subtotal: Number(item.price || 0) * Number(item.quantity || 1),
+          category_name: item.category_name || 'Sin categoría'
         }))
       }
 
@@ -194,6 +259,7 @@ const POSMostrador = () => {
 
       setMessage('Venta de mostrador registrada correctamente')
       clearOrder()
+      loadData()
     } catch (err) {
       setError(err.message || 'No se pudo registrar la venta')
     } finally {
@@ -245,59 +311,126 @@ PAGO: ${paymentMethod.toUpperCase()}
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="card xl:col-span-2">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="text-2xl font-poppins font-bold">
-                    Punto de Venta - Mostrador
-                  </h2>
-                  <p className="text-gray-600">
-                    Selecciona productos, arma el pedido y registra el pago.
-                  </p>
+            <div className="xl:col-span-2 space-y-6">
+              <div className="card">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+                  <div>
+                    <h2 className="text-2xl font-poppins font-bold">
+                      Punto de Venta - Mostrador
+                    </h2>
+                    <p className="text-gray-600">
+                      Selecciona productos, arma el pedido y registra el pago.
+                    </p>
+                  </div>
+
+                  <input
+                    className="input md:max-w-xs"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Buscar producto..."
+                  />
                 </div>
 
-                <input
-                  className="input md:max-w-xs"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar producto..."
-                />
-              </div>
+                <div className="mb-6">
+                  <h3 className="font-bold mb-3">Categorías rápidas</h3>
 
-              {loading ? (
-                <div className="text-center py-10 text-gray-500">
-                  Cargando productos...
-                </div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">
-                  No hay productos disponibles.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredProducts.map((product) => (
+                  <div className="flex gap-3 overflow-x-auto pb-2">
                     <button
-                      key={product.id}
                       type="button"
-                      onClick={() => addToCart(product)}
-                      className="border rounded-xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400 transition-all"
+                      onClick={() => setSelectedCategory('all')}
+                      className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                        selectedCategory === 'all'
+                          ? 'bg-black text-yellow-400 border-black'
+                          : 'bg-white text-black border-gray-300'
+                      }`}
                     >
-                      <h3 className="font-poppins font-bold text-lg">
-                        {product.name}
-                      </h3>
-
-                      {product.description && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
-                          {product.description}
-                        </p>
-                      )}
-
-                      <p className="font-bold text-black mt-3">
-                        {money(product.price)}
-                      </p>
+                      Todos
                     </button>
-                  ))}
+
+                    {categories.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(category.id)}
+                        className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                          selectedCategory === category.id
+                            ? 'bg-black text-yellow-400 border-black'
+                            : 'bg-yellow-50 text-black border-yellow-300'
+                        }`}
+                      >
+                        {category.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
+
+                {topProducts.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="font-bold mb-3">🔥 5 productos más vendidos</h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      {topProducts.map(({ product, quantity }) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => addToCart(product)}
+                          className="border border-yellow-400 bg-yellow-50 rounded-xl p-3 text-left hover:bg-yellow-100"
+                        >
+                          <p className="font-bold text-sm line-clamp-2">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Vendidos: {quantity}
+                          </p>
+                          <p className="font-bold mt-2">
+                            {money(product.price)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {loading ? (
+                  <div className="text-center py-10 text-gray-500">
+                    Cargando productos...
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500">
+                    No hay productos disponibles.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredProducts.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => addToCart(product)}
+                        className="border rounded-xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400 transition-all"
+                      >
+                        <div className="flex justify-between gap-3">
+                          <h3 className="font-poppins font-bold text-lg">
+                            {product.name}
+                          </h3>
+                          <span className="text-xs bg-gray-100 px-2 py-1 rounded-full h-fit">
+                            {productCategoryName(product)}
+                          </span>
+                        </div>
+
+                        {product.description && (
+                          <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                            {product.description}
+                          </p>
+                        )}
+
+                        <p className="font-bold text-black mt-3">
+                          {money(product.price)}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="card">
