@@ -73,15 +73,27 @@ router.post('/', verifyToken, verifyRole(['cajero', 'admin']), async (req, res) 
 
     if (orderError) throw orderError
 
-    const orderItems = items.map((item) => ({
-      order_id: order.id,
-      product_id: item.product_id || item.id || null,
-      name: item.name || item.product_name || 'Producto',
-      quantity: Number(item.quantity || 1),
-      unit_price: Number(item.unit_price || item.price || 0),
-      price: Number(item.price || item.unit_price || 0),
-      subtotal: Number(item.subtotal || 0)
-    }))
+    const orderItems = items.map((item) => {
+      const productName = item.name || item.product_name || item.name_snapshot || 'Producto'
+      const categoryName = item.category_name || item.category?.name || 'Sin categoría'
+      const quantity = Number(item.quantity || 1)
+      const unitPrice = Number(item.unit_price || item.price || 0)
+      const itemSubtotal = Number(item.subtotal || unitPrice * quantity)
+
+      return {
+        order_id: order.id,
+        product_id: item.product_id || item.id || null,
+        name: productName,
+        product_name: productName,
+        name_snapshot: productName,
+        category_name: categoryName,
+        quantity,
+        unit_price: unitPrice,
+        price: unitPrice,
+        subtotal: itemSubtotal,
+        sold_at: new Date().toISOString()
+      }
+    })
 
     const { error: itemsError } = await supabase
       .from('order_items')
