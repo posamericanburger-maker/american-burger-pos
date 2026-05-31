@@ -1,3 +1,4 @@
+import customersRoutes from './routes/customers.routes.js'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -19,6 +20,7 @@ import { logger } from './utils/logger.js'
 
 const app = express()
 
+app.use('/api/customers', customersRoutes)
 app.use(helmet())
 
 app.use(cors({
