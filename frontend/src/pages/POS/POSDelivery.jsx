@@ -239,7 +239,6 @@ const POSDelivery = () => {
       })
 
       setMessage('Pedido delivery registrado correctamente')
-      clearOrder()
     } catch (err) {
       setError(err.message || 'No se pudo registrar el pedido')
     } finally {
@@ -247,9 +246,58 @@ const POSDelivery = () => {
     }
   }
 
-  const whatsappMessage = encodeURIComponent(
-    `Hola ${customer.name || ''}, tu pedido de American Burger fue registrado. Total: ${money(total)}.`
-  )
+  const orderDetailText = cart
+    .map((item) => {
+      const quantity = Number(item.quantity || 1)
+      const price = Number(item.price || 0)
+      const lineTotal = quantity * price
+
+      return `• ${quantity} x ${item.name} = ${money(lineTotal)}`
+    })
+    .join('\n')
+
+  const paymentMethodText = {
+    cash: 'Efectivo',
+    debit: 'Débito',
+    credit: 'Crédito',
+    transfer: 'Transferencia'
+  }[customer.paymentMethod] || customer.paymentMethod
+
+  const whatsappMessage = encodeURIComponent(`
+🍔 AMERICAN BURGER
+
+Hola ${customer.name || ''}
+
+Tu pedido fue registrado correctamente.
+
+━━━━━━━━━━━━━━━
+DETALLE DEL PEDIDO
+━━━━━━━━━━━━━━━
+
+${orderDetailText}
+
+━━━━━━━━━━━━━━━
+
+Subtotal: ${money(subtotal)}
+Delivery: ${money(deliveryFee)}
+TOTAL: ${money(total)}
+
+━━━━━━━━━━━━━━━
+
+Dirección:
+${customer.address || ''}
+
+Referencia:
+${customer.reference || 'Sin referencia'}
+
+Medio de pago:
+${paymentMethodText}
+
+Notas:
+${customer.notes || 'Sin observaciones'}
+
+Gracias por preferir American Burger 🍔
+`)
 
   const whatsappPhone = customer.phone.replace(/[^0-9]/g, '')
   const whatsappUrl = whatsappPhone
