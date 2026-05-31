@@ -34,6 +34,74 @@ const getList = (data, keys = []) => {
   return []
 }
 
+const normalizeText = (value = '') => {
+  return String(value)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+}
+
+const categoryLabel = (name = '') => {
+  const normalized = normalizeText(name)
+
+  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) {
+    return '🍔 HAMBURGUESAS'
+  }
+
+  if (
+    normalized.includes('PAPA') ||
+    normalized.includes('SNACK') ||
+    normalized.includes('FRITA')
+  ) {
+    return '🍟 PAPAS & SNACKS'
+  }
+
+  if (normalized.includes('BEBIDA')) {
+    return '🥤 BEBIDAS'
+  }
+
+  if (
+    normalized.includes('INGREDIENTE') ||
+    normalized.includes('EXTRA') ||
+    normalized.includes('+')
+  ) {
+    return '➕ INGREDIENTES'
+  }
+
+  if (
+    normalized.includes('POLLO') ||
+    normalized.includes('CHICKEN') ||
+    normalized.includes('CRISPY') ||
+    normalized.includes('ALITA') ||
+    normalized.includes('TENDER')
+  ) {
+    return '🍗 POLLO CRISPY'
+  }
+
+  if (normalized.includes('COMBO')) {
+    return '🎯 COMBOS'
+  }
+
+  return name
+}
+
+const categoryOrderIndex = (name = '') => {
+  const label = categoryLabel(name)
+
+  const order = [
+    '🍔 HAMBURGUESAS',
+    '🍟 PAPAS & SNACKS',
+    '🥤 BEBIDAS',
+    '➕ INGREDIENTES',
+    '🍗 POLLO CRISPY',
+    '🎯 COMBOS'
+  ]
+
+  const index = order.indexOf(label)
+  return index === -1 ? 999 : index
+}
+
 const POSMostrador = () => {
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
@@ -117,6 +185,17 @@ const POSMostrador = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const orderA = categoryOrderIndex(a.name)
+      const orderB = categoryOrderIndex(b.name)
+
+      if (orderA !== orderB) return orderA - orderB
+
+      return normalizeText(a.name).localeCompare(normalizeText(b.name))
+    })
+  }, [categories])
 
   const productCategoryName = (product) => {
     if (product.category?.name) return product.category.name
@@ -335,19 +414,7 @@ PAGO: ${paymentMethod.toUpperCase()}
                   <h3 className="font-bold mb-3">Categorías rápidas</h3>
 
                   <div className="flex gap-3 overflow-x-auto pb-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCategory('all')}
-                      className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
-                        selectedCategory === 'all'
-                          ? 'bg-black text-yellow-400 border-black'
-                          : 'bg-white text-black border-gray-300'
-                      }`}
-                    >
-                      Todos
-                    </button>
-
-                    {categories.map((category) => (
+                    {sortedCategories.map((category) => (
                       <button
                         key={category.id}
                         type="button"
@@ -358,7 +425,7 @@ PAGO: ${paymentMethod.toUpperCase()}
                             : 'bg-yellow-50 text-black border-yellow-300'
                         }`}
                       >
-                        {category.name}
+                        {categoryLabel(category.name)}
                       </button>
                     ))}
                   </div>
@@ -413,7 +480,7 @@ PAGO: ${paymentMethod.toUpperCase()}
                             {product.name}
                           </h3>
                           <span className="text-xs bg-gray-100 px-2 py-1 rounded-full h-fit">
-                            {productCategoryName(product)}
+                            {categoryLabel(productCategoryName(product))}
                           </span>
                         </div>
 
