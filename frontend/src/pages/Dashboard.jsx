@@ -98,12 +98,16 @@ const Dashboard = () => {
           Hora: fecha.toLocaleTimeString('es-CL'),
           TipoVenta: typeLabel(order.order_type || order.type),
           MedioPago: paymentLabel(order.payment_method),
+          Cliente: order.customer_name || '',
+          WhatsApp: order.customer_phone || '',
+          Direccion: order.customer_address || '',
           Producto: item.name || item.product_name || item.name_snapshot || '',
           Categoria: item.category_name || 'Sin categoría',
           Cantidad: Number(item.quantity || 1),
           PrecioUnitario: Number(item.unit_price || item.price || 0),
           Subtotal: Number(item.subtotal || 0),
-          TotalPedido: Number(order.total || order.total_amount || 0)
+          TotalPedido: Number(order.total || order.total_amount || 0),
+          Notas: order.notes || ''
         })
       })
     })
@@ -270,6 +274,82 @@ const Dashboard = () => {
     }, 500)
   }
 
+  const sendOrderWhatsApp = (order) => {
+    const phone = String(order.customer_phone || '').replace(/\D/g, '')
+
+    if (!phone) {
+      alert('Esta venta no tiene número de WhatsApp registrado')
+      return
+    }
+
+    const items = order.items || []
+    const total = Number(order.total || order.total_amount || 0)
+    const deliveryFee = Number(order.delivery_fee || 0)
+    const subtotal = Number(order.subtotal || total - deliveryFee)
+
+    const productsText = items
+      .map((item) => {
+        const qty = Number(item.quantity || 1)
+        const price = Number(item.unit_price || item.price || 0)
+        const lineTotal = Number(item.subtotal || qty * price)
+        const name = item.name || item.product_name || item.name_snapshot || 'Producto'
+
+        return `🍔 ${name}
+   ${qty} x ${money(price)} = ${money(lineTotal)}`
+      })
+      .join('\n\n')
+
+    const message = encodeURIComponent(`🍔 AMERICAN BURGER
+━━━━━━━━━━━━━━━━━━
+
+Hola ${order.customer_name || 'cliente'} 👋
+
+✅ Tu pedido fue recibido correctamente.
+
+━━━━━━━━━━━━━━━━━━
+🧾 RESUMEN DEL PEDIDO
+━━━━━━━━━━━━━━━━━━
+
+${productsText}
+
+━━━━━━━━━━━━━━━━━━
+💰 RESUMEN DE PAGO
+━━━━━━━━━━━━━━━━━━
+
+Subtotal: ${money(subtotal)}
+Delivery: ${money(deliveryFee)}
+TOTAL: ${money(total)}
+
+💳 Pago:
+${paymentLabel(order.payment_method)}
+
+━━━━━━━━━━━━━━━━━━
+📍 ENTREGA
+━━━━━━━━━━━━━━━━━━
+
+Dirección:
+${order.customer_address || 'No registrada'}
+
+━━━━━━━━━━━━━━━━━━
+📝 INDICACIONES
+━━━━━━━━━━━━━━━━━━
+
+${order.notes || 'Sin observaciones'}
+
+━━━━━━━━━━━━━━━━━━
+
+Precios con IVA incluido.
+
+Gracias por preferir
+🍔 AMERICAN BURGER
+
+¡Buen provecho! 😋`)
+
+    const finalPhone = phone.startsWith('56') ? phone : `56${phone}`
+
+    window.open(`https://wa.me/${finalPhone}?text=${message}`, '_blank')
+  }
+
   return (
     <div className="page-container">
       <Sidebar />
@@ -342,7 +422,7 @@ const Dashboard = () => {
               <div>
                 <h2 className="text-2xl font-bold">Registro de ventas</h2>
                 <p className="text-gray-600">
-                  Selecciona una venta para ver sus productos e imprimir el recibo del cliente.
+                  Selecciona una venta para ver sus productos, imprimir o reenviar el detalle al cliente.
                 </p>
               </div>
 
@@ -408,6 +488,13 @@ const Dashboard = () => {
                               className="bg-black text-yellow-400 px-3 py-2 rounded font-bold"
                             >
                               Imprimir
+                            </button>
+
+                            <button
+                              onClick={() => sendOrderWhatsApp(order)}
+                              className="bg-green-600 text-white px-3 py-2 rounded font-bold"
+                            >
+                              WhatsApp
                             </button>
                           </td>
                         </tr>
@@ -513,12 +600,19 @@ const Dashboard = () => {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 flex-wrap">
                 <button
                   onClick={() => setSelectedOrder(null)}
                   className="border px-5 py-3 rounded-lg"
                 >
                   Cerrar
+                </button>
+
+                <button
+                  onClick={() => sendOrderWhatsApp(selectedOrder)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-lg font-bold"
+                >
+                  WhatsApp Cliente
                 </button>
 
                 <button
