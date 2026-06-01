@@ -4,9 +4,7 @@ import { verifyToken, verifyRole } from '../middleware/auth.js'
 
 const router = express.Router()
 
-const cleanPhone = (phone = '') => {
-  return String(phone).replace(/[^0-9]/g, '')
-}
+const cleanPhone = (phone = '') => String(phone).replace(/[^0-9]/g, '')
 
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -123,6 +121,62 @@ router.post('/', verifyToken, verifyRole(['cajero', 'admin']), async (req, res) 
       .insert(orderItems)
 
     if (itemsError) throw itemsError
+
+    for (const item of orderItems) {
+      if (!item.product_id) continue
+
+      const { data: recipeItems, error: recipeError } = await supabase
+        .from('product_recipes')
+        .select('*')
+        .eq('product_id', item.product_id)
+
+      if (recipeError) throw recipeError
+      if (!recipeItems?.length) continue
+
+      for (const recipe of recipeItems) {
+        const quantityToDiscount =
+          Number(recipe.quantity || 0) * Number(item.quantity || 1)
+
+        if (quantityToDiscount <= 0) continue
+
+        const { data: inventoryItem, error: inventoryError } = await supabase
+          .from('inventory')
+          .select('*')
+          .eq('id', recipe.inventory_item_id)
+          .single()
+
+        if (inventoryError || !inventoryItem) continue
+
+        const currentStock = Number(
+          inventoryItem.current_stock ??
+          inventoryItem.stock ??
+          0
+        )
+
+        const newStock = currentStock - quantityToDiscount
+
+        const { error: updateStockError } = await supabase
+          .from('inventory')
+          .update({
+            current_stock: newStock,
+            stock: newStock,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', recipe.inventory_item_id)
+
+        if (updateStockError) throw updateStockError
+
+        await supabase
+          .from('inventory_movements')
+          .insert({
+            item_id: recipe.inventory_item_id,
+            type: 'sale',
+            quantity: quantityToDiscount,
+            description: `Descuento automático por venta pedido ${order.id}`,
+            created_at: new Date().toISOString()
+          })
+      }
+    }
 
     return res.status(201).json({
       success: true,
