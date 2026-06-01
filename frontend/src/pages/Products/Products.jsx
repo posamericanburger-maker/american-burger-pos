@@ -22,9 +22,23 @@ const getToken = () => {
   )
 }
 
+const getList = (data, keys = []) => {
+  if (Array.isArray(data)) return data
+
+  for (const key of keys) {
+    if (Array.isArray(data?.[key])) return data[key]
+  }
+
+  if (Array.isArray(data?.data)) return data.data
+  if (Array.isArray(data?.items)) return data.items
+
+  return []
+}
+
 const Products = () => {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
+  const [inventoryItems, setInventoryItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -41,6 +55,14 @@ const Products = () => {
     stock: '',
     active: true
   })
+
+  const [recipe, setRecipe] = useState([
+    {
+      inventory_item_id: '',
+      quantity: '',
+      unit: 'unid.'
+    }
+  ])
 
   const headers = useMemo(() => {
     const token = getToken()
@@ -80,33 +102,32 @@ const Products = () => {
       setLoading(true)
       setError('')
 
-      const [productsResponse, categoriesResponse] = await Promise.allSettled([
-        apiRequest('/products'),
-        apiRequest('/categories')
-      ])
+      const [productsResponse, categoriesResponse, inventoryResponse] =
+        await Promise.allSettled([
+          apiRequest('/products'),
+          apiRequest('/categories'),
+          apiRequest('/inventory')
+        ])
 
       if (productsResponse.status === 'fulfilled') {
-        const productsData =
-          productsResponse.value?.products ||
-          productsResponse.value?.data ||
-          productsResponse.value ||
-          []
-
-        setProducts(Array.isArray(productsData) ? productsData : [])
+        const productsData = getList(productsResponse.value, ['products'])
+        setProducts(productsData)
       } else {
         setProducts([])
       }
 
       if (categoriesResponse.status === 'fulfilled') {
-        const categoriesData =
-          categoriesResponse.value?.categories ||
-          categoriesResponse.value?.data ||
-          categoriesResponse.value ||
-          []
-
-        setCategories(Array.isArray(categoriesData) ? categoriesData : [])
+        const categoriesData = getList(categoriesResponse.value, ['categories'])
+        setCategories(categoriesData)
       } else {
         setCategories([])
+      }
+
+      if (inventoryResponse.status === 'fulfilled') {
+        const inventoryData = getList(inventoryResponse.value, ['inventory', 'items'])
+        setInventoryItems(inventoryData)
+      } else {
+        setInventoryItems([])
       }
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los productos')
@@ -126,6 +147,7 @@ const Products = () => {
 
   const resetForm = () => {
     setEditingId(null)
+
     setForm({
       name: '',
       description: '',
@@ -135,14 +157,73 @@ const Products = () => {
       stock: '',
       active: true
     })
+
+    setRecipe([
+      {
+        inventory_item_id: '',
+        quantity: '',
+        unit: 'unid.'
+      }
+    ])
   }
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
+
     setForm((current) => ({
       ...current,
       [name]: type === 'checkbox' ? checked : value
     }))
+  }
+
+  const addRecipeRow = () => {
+    setRecipe((current) => [
+      ...current,
+      {
+        inventory_item_id: '',
+        quantity: '',
+        unit: 'unid.'
+      }
+    ])
+  }
+
+  const updateRecipe = (index, field, value) => {
+    setRecipe((current) =>
+      current.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              [field]: value
+            }
+          : row
+      )
+    )
+  }
+
+  const removeRecipeRow = (index) => {
+    setRecipe((current) => {
+      const next = current.filter((_, i) => i !== index)
+
+      return next.length > 0
+        ? next
+        : [
+            {
+              inventory_item_id: '',
+              quantity: '',
+              unit: 'unid.'
+            }
+          ]
+    })
+  }
+
+  const cleanRecipe = () => {
+    return recipe
+      .filter((item) => item.inventory_item_id && Number(item.quantity || 0) > 0)
+      .map((item) => ({
+        inventory_item_id: item.inventory_item_id,
+        quantity: Number(item.quantity || 0),
+        unit: item.unit || 'unid.'
+      }))
   }
 
   const handleSubmit = async (event) => {
@@ -159,7 +240,8 @@ const Products = () => {
         price: Number(form.price || 0),
         cost: Number(form.cost || 0),
         stock: Number(form.stock || 0),
-        active: Boolean(form.active)
+        active: Boolean(form.active),
+        recipe: cleanRecipe()
       }
 
       if (!payload.name) {
@@ -175,13 +257,15 @@ const Products = () => {
           method: 'PUT',
           body: JSON.stringify(payload)
         })
-        setSuccess('Producto actualizado correctamente')
+
+        setSuccess('Producto y receta actualizados correctamente')
       } else {
         await apiRequest('/products', {
           method: 'POST',
           body: JSON.stringify(payload)
         })
-        setSuccess('Producto creado correctamente')
+
+        setSuccess('Producto y receta creados correctamente')
       }
 
       resetForm()
@@ -193,8 +277,9 @@ const Products = () => {
     }
   }
 
-  const editProduct = (product) => {
+  const editProduct = async (product) => {
     setEditingId(product.id)
+
     setForm({
       name: product.name || '',
       description: product.description || '',
@@ -204,6 +289,48 @@ const Products = () => {
       stock: product.stock || product.current_stock || '',
       active: product.active !== false
     })
+
+    const existingRecipe = product.recipe || []
+
+    if (Array.isArray(existingRecipe) && existingRecipe.length > 0) {
+      setRecipe(
+        existingRecipe.map((item) => ({
+          inventory_item_id: item.inventory_item_id || item.inventory?.id || '',
+          quantity: item.quantity || '',
+          unit: item.unit || item.inventory?.unit || 'unid.'
+        }))
+      )
+    } else {
+      try {
+        const data = await apiRequest(`/products/${product.id}/recipe`)
+        const recipeData = getList(data, ['recipe'])
+
+        setRecipe(
+          recipeData.length > 0
+            ? recipeData.map((item) => ({
+                inventory_item_id: item.inventory_item_id || item.inventory?.id || '',
+                quantity: item.quantity || '',
+                unit: item.unit || item.inventory?.unit || 'unid.'
+              }))
+            : [
+                {
+                  inventory_item_id: '',
+                  quantity: '',
+                  unit: 'unid.'
+                }
+              ]
+        )
+      } catch {
+        setRecipe([
+          {
+            inventory_item_id: '',
+            quantity: '',
+            unit: 'unid.'
+          }
+        ])
+      }
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -214,7 +341,9 @@ const Products = () => {
     try {
       setError('')
       setSuccess('')
+
       await apiRequest(`/products/${product.id}`, { method: 'DELETE' })
+
       setSuccess('Producto eliminado correctamente')
       await loadData()
     } catch (err) {
@@ -224,8 +353,15 @@ const Products = () => {
 
   const categoryName = (product) => {
     if (product.category?.name) return product.category.name
+
     const category = categories.find((item) => item.id === product.category_id)
+
     return category?.name || 'Sin categoría'
+  }
+
+  const recipeCount = (product) => {
+    if (Array.isArray(product.recipe)) return product.recipe.length
+    return 0
   }
 
   return (
@@ -243,7 +379,7 @@ const Products = () => {
               </h2>
 
               <p className="text-gray-600 mb-6">
-                Crea y administra los productos de American Burger.
+                Crea productos y configura su receta para descontar inventario automáticamente.
               </p>
 
               {error && (
@@ -351,6 +487,96 @@ const Products = () => {
                   Producto activo para vender
                 </label>
 
+                <div className="border rounded-xl p-4 bg-gray-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-lg">Receta del producto</h3>
+                      <p className="text-sm text-gray-500">
+                        Insumos que se descuentan al vender este producto.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addRecipeRow}
+                      className="bg-yellow-400 text-black font-bold px-3 py-2 rounded-lg"
+                    >
+                      + Insumo
+                    </button>
+                  </div>
+
+                  {inventoryItems.length === 0 && (
+                    <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-3 py-2 rounded mb-3 text-sm">
+                      Primero crea insumos en el módulo Inventario.
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {recipe.map((item, index) => {
+                      const selectedInventory = inventoryItems.find(
+                        (inv) => inv.id === item.inventory_item_id
+                      )
+
+                      return (
+                        <div
+                          key={index}
+                          className="grid grid-cols-12 gap-2 items-center"
+                        >
+                          <select
+                            className="input col-span-6"
+                            value={item.inventory_item_id}
+                            onChange={(event) => {
+                              const inventory = inventoryItems.find(
+                                (inv) => inv.id === event.target.value
+                              )
+
+                              updateRecipe(index, 'inventory_item_id', event.target.value)
+                              updateRecipe(index, 'unit', inventory?.unit || 'unid.')
+                            }}
+                          >
+                            <option value="">Selecciona insumo</option>
+
+                            {inventoryItems.map((inv) => (
+                              <option key={inv.id} value={inv.id}>
+                                {inv.name} ({inv.current_stock || inv.stock || 0} {inv.unit})
+                              </option>
+                            ))}
+                          </select>
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input col-span-3"
+                            placeholder="Cant."
+                            value={item.quantity}
+                            onChange={(event) =>
+                              updateRecipe(index, 'quantity', event.target.value)
+                            }
+                          />
+
+                          <input
+                            className="input col-span-2"
+                            value={item.unit || selectedInventory?.unit || 'unid.'}
+                            onChange={(event) =>
+                              updateRecipe(index, 'unit', event.target.value)
+                            }
+                            placeholder="Unidad"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => removeRecipeRow(index)}
+                            className="bg-red-600 text-white rounded-lg px-2 py-2 font-bold col-span-1"
+                          >
+                            X
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     type="submit"
@@ -407,6 +633,7 @@ const Products = () => {
                         <th className="py-3 pr-4">Categoría</th>
                         <th className="py-3 pr-4">Precio</th>
                         <th className="py-3 pr-4">Costo</th>
+                        <th className="py-3 pr-4">Receta</th>
                         <th className="py-3 pr-4">Estado</th>
                         <th className="py-3 pr-4 text-right">Acciones</th>
                       </tr>
@@ -419,6 +646,7 @@ const Products = () => {
                             <div className="font-semibold text-black">
                               {product.name}
                             </div>
+
                             {product.description && (
                               <div className="text-sm text-gray-500 line-clamp-2">
                                 {product.description}
@@ -436,6 +664,20 @@ const Products = () => {
 
                           <td className="py-4 pr-4 text-gray-700">
                             {money(product.cost)}
+                          </td>
+
+                          <td className="py-4 pr-4">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                recipeCount(product) > 0
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-200 text-gray-600'
+                              }`}
+                            >
+                              {recipeCount(product) > 0
+                                ? `${recipeCount(product)} insumo(s)`
+                                : 'Sin receta'}
+                            </span>
                           </td>
 
                           <td className="py-4 pr-4">
