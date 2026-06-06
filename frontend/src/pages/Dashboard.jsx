@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
+import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 import useAuth from '../hooks/useAuth'
 
@@ -378,296 +379,310 @@ Gracias por preferir 🍔 AMERICAN BURGER
   }
 
   return (
-    <div className="page-content">
-      <Navbar title="Dashboard" />
+    <div className="page-container">
+      <Sidebar />
 
-      <div className="main-content space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="card">
-            <p className="text-gray-600">Ventas Hoy</p>
-            <h2 className="text-3xl font-bold">{money(salesToday)}</h2>
+      <div className="page-content">
+        <Navbar title="Dashboard" />
+
+        <div className="main-content space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="card">
+              <p className="text-gray-600">Ventas Hoy</p>
+              <h2 className="text-3xl font-bold">{money(salesToday)}</h2>
+            </div>
+
+            <div className="card">
+              <p className="text-gray-600">Pedidos</p>
+              <h2 className="text-3xl font-bold">{todayOrders.length}</h2>
+            </div>
+
+            <div className="card">
+              <p className="text-gray-600">Estado Caja</p>
+              <h2
+                className={`text-3xl font-bold ${
+                  activeCash ? 'text-green-600' : 'text-red-600'
+                }`}
+              >
+                {activeCash ? 'ABIERTA' : 'CERRADA'}
+              </h2>
+            </div>
+
+            <div className="card">
+              <p className="text-gray-600">Productos</p>
+              <h2 className="text-3xl font-bold">{products.length}</h2>
+            </div>
           </div>
 
           <div className="card">
-            <p className="text-gray-600">Pedidos</p>
-            <h2 className="text-3xl font-bold">{todayOrders.length}</h2>
-          </div>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Detalle de ventas</h2>
 
-          <div className="card">
-            <p className="text-gray-600">Estado Caja</p>
-            <h2
-              className={`text-3xl font-bold ${
-                activeCash ? 'text-green-600' : 'text-red-600'
-              }`}
-            >
-              {activeCash ? 'ABIERTA' : 'CERRADA'}
-            </h2>
-          </div>
+              <button
+                onClick={exportExcel}
+                className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
+              >
+                Descargar Excel
+              </button>
+            </div>
 
-          <div className="card">
-            <p className="text-gray-600">Productos</p>
-            <h2 className="text-3xl font-bold">{products.length}</h2>
-          </div>
-        </div>
+            <h3 className="font-bold mb-2">Por tipo de venta</h3>
 
-        <div className="card">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Detalle de ventas</h2>
-
-            <button
-              onClick={exportExcel}
-              className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
-            >
-              Descargar Excel
-            </button>
-          </div>
-
-          <h3 className="font-bold mb-2">Por tipo de venta</h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {Object.entries(salesByType).length === 0 ? (
-              <div className="border rounded-lg p-4">
-                <p>Mostrador</p>
-                <h3 className="text-2xl font-bold">{money(0)}</h3>
-              </div>
-            ) : (
-              Object.entries(salesByType).map(([type, total]) => (
-                <div key={type} className="border rounded-lg p-4">
-                  <p>{typeLabel(type)}</p>
-                  <h3 className="text-2xl font-bold">{money(total)}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {Object.entries(salesByType).length === 0 ? (
+                <div className="border rounded-lg p-4">
+                  <p>Mostrador</p>
+                  <h3 className="text-2xl font-bold">{money(0)}</h3>
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                Object.entries(salesByType).map(([type, total]) => (
+                  <div key={type} className="border rounded-lg p-4">
+                    <p>{typeLabel(type)}</p>
+                    <h3 className="text-2xl font-bold">{money(total)}</h3>
+                  </div>
+                ))
+              )}
+            </div>
 
-          <h3 className="font-bold mb-2">Por medio de pago</h3>
+            <h3 className="font-bold mb-2">Por medio de pago</h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {Object.entries(salesByPayment).length === 0 ? (
-              <div className="border rounded-lg p-4">
-                <p>Efectivo</p>
-                <h3 className="text-2xl font-bold">{money(0)}</h3>
-              </div>
-            ) : (
-              Object.entries(salesByPayment).map(([method, total]) => (
-                <div key={method} className="border rounded-lg p-4">
-                  <p>{paymentLabel(method)}</p>
-                  <h3 className="text-2xl font-bold">{money(total)}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {Object.entries(salesByPayment).length === 0 ? (
+                <div className="border rounded-lg p-4">
+                  <p>Efectivo</p>
+                  <h3 className="text-2xl font-bold">{money(0)}</h3>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-            <div>
-              <h2 className="text-2xl font-bold">Registro de ventas</h2>
-              <p className="text-gray-600">
-                Selecciona una venta para ver sus productos, imprimir o
-                reenviar el detalle al cliente.
-              </p>
+              ) : (
+                Object.entries(salesByPayment).map(([method, total]) => (
+                  <div key={method} className="border rounded-lg p-4">
+                    <p>{paymentLabel(method)}</p>
+                    <h3 className="text-2xl font-bold">{money(total)}</h3>
+                  </div>
+                ))
+              )}
             </div>
-
-            <button
-              onClick={loadDashboard}
-              className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
-            >
-              Actualizar
-            </button>
           </div>
 
-          {orders.length === 0 ? (
-            <div className="text-center text-gray-500 py-10">
-              No hay ventas registradas.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b text-gray-500">
-                    <th className="py-3">Fecha</th>
-                    <th>Hora</th>
-                    <th>Tipo</th>
-                    <th>Pago</th>
-                    <th>Productos</th>
-                    <th>Total</th>
-                    <th className="text-right">Acciones</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {orders.map((order) => {
-                    const date = new Date(order.created_at)
-                    const items = order.items || []
-                    const total = Number(order.total || order.total_amount || 0)
-
-                    return (
-                      <tr key={order.id} className="border-b">
-                        <td className="py-3">
-                          {date.toLocaleDateString('es-CL')}
-                        </td>
-
-                        <td>{date.toLocaleTimeString('es-CL')}</td>
-
-                        <td>{typeLabel(order.order_type || order.type)}</td>
-
-                        <td>{paymentLabel(order.payment_method)}</td>
-
-                        <td>{items.length}</td>
-
-                        <td className="font-bold">{money(total)}</td>
-
-                        <td className="text-right space-x-2">
-                          <button
-                            onClick={() => setSelectedOrder(order)}
-                            className="bg-yellow-400 text-black px-3 py-2 rounded font-bold"
-                          >
-                            Ver
-                          </button>
-
-                          <button
-                            onClick={() => printCustomerReceipt(order)}
-                            className="bg-black text-yellow-400 px-3 py-2 rounded font-bold"
-                          >
-                            Imprimir
-                          </button>
-
-                          <button
-                            onClick={() => sendOrderWhatsApp(order)}
-                            className="bg-green-600 text-white px-3 py-2 rounded font-bold"
-                          >
-                            WhatsApp
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <h2 className="text-2xl font-bold">
-            Bienvenido, {user?.full_name || 'Administrador American Burger'}!
-          </h2>
-
-          <p className="text-gray-600 mt-2">
-            Sistema POS conectado a Supabase y Render.
-          </p>
-        </div>
-      </div>
-
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-start mb-4">
+          <div className="card">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">Detalle de venta</h2>
+                <h2 className="text-2xl font-bold">Registro de ventas</h2>
                 <p className="text-gray-600">
-                  {new Date(selectedOrder.created_at).toLocaleString('es-CL')}
+                  Selecciona una venta para ver sus productos, imprimir o
+                  reenviar el detalle al cliente.
                 </p>
               </div>
 
               <button
-                onClick={() => setSelectedOrder(null)}
-                className="text-red-600 font-bold text-xl"
-              >
-                X
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="border rounded-lg p-4">
-                <p className="text-gray-500">Tipo</p>
-                <h3 className="font-bold">
-                  {typeLabel(selectedOrder.order_type || selectedOrder.type)}
-                </h3>
-              </div>
-
-              <div className="border rounded-lg p-4">
-                <p className="text-gray-500">Medio de pago</p>
-                <h3 className="font-bold">
-                  {paymentLabel(selectedOrder.payment_method)}
-                </h3>
-              </div>
-
-              <div className="border rounded-lg p-4">
-                <p className="text-gray-500">Total</p>
-                <h3 className="font-bold">
-                  {money(selectedOrder.total || selectedOrder.total_amount || 0)}
-                </h3>
-              </div>
-            </div>
-
-            <h3 className="text-xl font-bold mb-3">Productos comprados</h3>
-
-            <div className="overflow-x-auto mb-6">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b text-gray-500">
-                    <th className="py-3">Producto</th>
-                    <th>Categoría</th>
-                    <th>Cantidad</th>
-                    <th>Precio</th>
-                    <th>Subtotal</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {(selectedOrder.items || []).map((item) => (
-                    <tr key={item.id} className="border-b">
-                      <td className="py-3 font-semibold">
-                        {item.name || item.product_name || item.name_snapshot}
-                      </td>
-
-                      <td>{item.category_name || 'Sin categoría'}</td>
-
-                      <td>{item.quantity}</td>
-
-                      <td>{money(item.unit_price || item.price || 0)}</td>
-
-                      <td>{money(item.subtotal || 0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {selectedOrder.notes && (
-              <div className="border rounded-lg p-4 mb-6">
-                <p className="text-gray-500">Notas</p>
-                <p className="font-semibold">{selectedOrder.notes}</p>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3 flex-wrap">
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="border px-5 py-3 rounded-lg"
-              >
-                Cerrar
-              </button>
-
-              <button
-                onClick={() => sendOrderWhatsApp(selectedOrder)}
-                className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-lg font-bold"
-              >
-                WhatsApp Cliente
-              </button>
-
-              <button
-                onClick={() => printCustomerReceipt(selectedOrder)}
+                onClick={loadDashboard}
                 className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
               >
-                Imprimir recibo cliente
+                Actualizar
               </button>
             </div>
+
+            {orders.length === 0 ? (
+              <div className="text-center text-gray-500 py-10">
+                No hay ventas registradas.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b text-gray-500">
+                      <th className="py-3">Fecha</th>
+                      <th>Hora</th>
+                      <th>Tipo</th>
+                      <th>Pago</th>
+                      <th>Productos</th>
+                      <th>Total</th>
+                      <th className="text-right">Acciones</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {orders.map((order) => {
+                      const date = new Date(order.created_at)
+                      const items = order.items || []
+                      const total = Number(
+                        order.total || order.total_amount || 0
+                      )
+
+                      return (
+                        <tr key={order.id} className="border-b">
+                          <td className="py-3">
+                            {date.toLocaleDateString('es-CL')}
+                          </td>
+
+                          <td>{date.toLocaleTimeString('es-CL')}</td>
+
+                          <td>{typeLabel(order.order_type || order.type)}</td>
+
+                          <td>{paymentLabel(order.payment_method)}</td>
+
+                          <td>{items.length}</td>
+
+                          <td className="font-bold">{money(total)}</td>
+
+                          <td className="text-right space-x-2">
+                            <button
+                              onClick={() => setSelectedOrder(order)}
+                              className="bg-yellow-400 text-black px-3 py-2 rounded font-bold"
+                            >
+                              Ver
+                            </button>
+
+                            <button
+                              onClick={() => printCustomerReceipt(order)}
+                              className="bg-black text-yellow-400 px-3 py-2 rounded font-bold"
+                            >
+                              Imprimir
+                            </button>
+
+                            <button
+                              onClick={() => sendOrderWhatsApp(order)}
+                              className="bg-green-600 text-white px-3 py-2 rounded font-bold"
+                            >
+                              WhatsApp
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <h2 className="text-2xl font-bold">
+              Bienvenido, {user?.full_name || 'Administrador American Burger'}!
+            </h2>
+
+            <p className="text-gray-600 mt-2">
+              Sistema POS conectado a Supabase y Render.
+            </p>
           </div>
         </div>
-      )}
+
+        {selectedOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold">Detalle de venta</h2>
+                  <p className="text-gray-600">
+                    {new Date(selectedOrder.created_at).toLocaleString(
+                      'es-CL'
+                    )}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-red-600 font-bold text-xl"
+                >
+                  X
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Tipo</p>
+                  <h3 className="font-bold">
+                    {typeLabel(selectedOrder.order_type || selectedOrder.type)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Medio de pago</p>
+                  <h3 className="font-bold">
+                    {paymentLabel(selectedOrder.payment_method)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-lg p-4">
+                  <p className="text-gray-500">Total</p>
+                  <h3 className="font-bold">
+                    {money(
+                      selectedOrder.total ||
+                        selectedOrder.total_amount ||
+                        0
+                    )}
+                  </h3>
+                </div>
+              </div>
+
+              <h3 className="text-xl font-bold mb-3">Productos comprados</h3>
+
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b text-gray-500">
+                      <th className="py-3">Producto</th>
+                      <th>Categoría</th>
+                      <th>Cantidad</th>
+                      <th>Precio</th>
+                      <th>Subtotal</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {(selectedOrder.items || []).map((item) => (
+                      <tr key={item.id} className="border-b">
+                        <td className="py-3 font-semibold">
+                          {item.name ||
+                            item.product_name ||
+                            item.name_snapshot}
+                        </td>
+
+                        <td>{item.category_name || 'Sin categoría'}</td>
+
+                        <td>{item.quantity}</td>
+
+                        <td>{money(item.unit_price || item.price || 0)}</td>
+
+                        <td>{money(item.subtotal || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {selectedOrder.notes && (
+                <div className="border rounded-lg p-4 mb-6">
+                  <p className="text-gray-500">Notas</p>
+                  <p className="font-semibold">{selectedOrder.notes}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 flex-wrap">
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="border px-5 py-3 rounded-lg"
+                >
+                  Cerrar
+                </button>
+
+                <button
+                  onClick={() => sendOrderWhatsApp(selectedOrder)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-lg font-bold"
+                >
+                  WhatsApp Cliente
+                </button>
+
+                <button
+                  onClick={() => printCustomerReceipt(selectedOrder)}
+                  className="bg-black text-yellow-400 px-5 py-3 rounded-lg font-bold"
+                >
+                  Imprimir recibo cliente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
