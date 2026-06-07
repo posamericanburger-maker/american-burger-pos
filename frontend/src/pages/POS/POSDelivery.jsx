@@ -72,6 +72,7 @@ const POSDelivery = () => {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [cashOpen, setCashOpen] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
@@ -118,6 +119,30 @@ const POSDelivery = () => {
     return data
   }
 
+  const checkCashStatus = async () => {
+    try {
+      const data = await request('/cash/sessions')
+      const sessions = getList(data, ['sessions', 'cash_sessions'])
+
+      const activeSession = sessions.find((session) => {
+        const status = String(session.status || '').toLowerCase()
+        return (
+          status === 'open' ||
+          status === 'abierta' ||
+          (!session.closed_at && !session.closedAt)
+        )
+      })
+
+      const isOpen = Boolean(activeSession)
+      setCashOpen(isOpen)
+      return isOpen
+    } catch (err) {
+      console.error('Error verificando caja:', err)
+      setCashOpen(false)
+      return false
+    }
+  }
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -137,6 +162,8 @@ const POSDelivery = () => {
         const list = getList(categoriesData.value, ['categories'])
         setCategories(list.filter((category) => category.active !== false))
       }
+
+      await checkCashStatus()
     } catch (err) {
       setError(err.message || 'No se pudieron cargar productos')
     } finally {
@@ -472,6 +499,12 @@ const POSDelivery = () => {
     setMessage('')
 
     try {
+      const isCashOpen = await checkCashStatus()
+
+      if (!isCashOpen) {
+        throw new Error('Debes abrir caja antes de registrar pedidos delivery')
+      }
+
       if (cart.length === 0) throw new Error('Agrega productos al pedido')
       if (!customer.name.trim()) throw new Error('Ingresa el nombre del cliente')
       if (!customer.phone.trim()) throw new Error('Ingresa el teléfono del cliente')
@@ -590,6 +623,12 @@ Gracias por preferir American Burger 🍔
           {message && (
             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
               {message}
+            </div>
+          )}
+
+          {!cashOpen && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded font-bold">
+              ⚠ Caja cerrada. Debes abrir caja antes de registrar pedidos delivery.
             </div>
           )}
 
@@ -842,11 +881,15 @@ Gracias por preferir American Burger 🍔
 
                   <button
                     type="button"
-                    disabled={saving}
+                    disabled={saving || !cashOpen}
                     onClick={submitOrder}
                     className="w-full bg-black text-yellow-400 font-poppins font-bold py-3 rounded-lg hover:bg-yellow-400 hover:text-black transition-all disabled:opacity-50"
                   >
-                    {saving ? 'Registrando...' : 'Registrar pedido'}
+                    {!cashOpen
+                      ? 'Caja cerrada'
+                      : saving
+                        ? 'Registrando...'
+                        : 'Registrar pedido'}
                   </button>
 
                   <a
