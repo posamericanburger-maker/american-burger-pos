@@ -77,14 +77,87 @@ router.post('/', verifyToken, verifyRole(['admin']), async (req, res) => {
   }
 })
 
+router.put('/:id', verifyToken, verifyRole(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params
+    const {
+      name,
+      stock = 0,
+      current_stock = stock,
+      min_stock = 0,
+      minimum_stock = min_stock,
+      unit = 'unid.'
+    } = req.body
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'El nombre del insumo es obligatorio'
+      })
+    }
+
+    const newStock = Number(current_stock || stock || 0)
+    const newMinStock = Number(minimum_stock || min_stock || 0)
+
+    const { data, error } = await supabase
+      .from('inventory')
+      .update({
+        name: name.trim(),
+        stock: newStock,
+        current_stock: newStock,
+        min_stock: newMinStock,
+        minimum_stock: newMinStock,
+        unit,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return res.json({
+      success: true,
+      message: 'Insumo actualizado correctamente',
+      item: data
+    })
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error al actualizar insumo'
+    })
+  }
+})
+
+router.delete('/:id', verifyToken, verifyRole(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const { error } = await supabase
+      .from('inventory')
+      .update({
+        active: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+
+    if (error) throw error
+
+    return res.json({
+      success: true,
+      message: 'Insumo eliminado correctamente'
+    })
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error al eliminar insumo'
+    })
+  }
+})
+
 router.post('/movement', verifyToken, verifyRole(['admin']), async (req, res) => {
   try {
-    const {
-      item_id,
-      type,
-      quantity,
-      description = ''
-    } = req.body
+    const { item_id, type, quantity, description = '' } = req.body
 
     if (!item_id) {
       return res.status(400).json({
@@ -112,7 +185,6 @@ router.post('/movement', verifyToken, verifyRole(['admin']), async (req, res) =>
     if (itemError) throw itemError
 
     const currentStock = Number(item.current_stock ?? item.stock ?? 0)
-
     let newStock = currentStock
 
     if (cleanType === 'in' || cleanType === 'entrada' || cleanType === 'purchase') {
