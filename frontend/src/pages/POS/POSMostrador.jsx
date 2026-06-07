@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://american-burger-pos-api-d8r1.onrender.com/api'
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://american-burger-pos-api-d8r1.onrender.com/api'
 
 const money = (value) => {
   return new Intl.NumberFormat('es-CL', {
@@ -84,6 +86,7 @@ const POSMostrador = () => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [cashOpen, setCashOpen] = useState(false)
 
   const headers = useMemo(() => {
     const token = getToken()
@@ -119,6 +122,23 @@ const POSMostrador = () => {
     return data
   }
 
+  const checkCashStatus = async () => {
+    try {
+      const data = await request('/cash/sessions')
+      const sessions = getList(data, ['sessions', 'cash_sessions'])
+
+      const activeSession = sessions.find((session) => {
+        const status = String(session.status || '').toLowerCase()
+        return status === 'open' || status === 'abierta' || (!session.closed_at && !session.closedAt)
+      })
+
+      setCashOpen(Boolean(activeSession))
+    } catch (err) {
+      console.error('Error verificando caja:', err)
+      setCashOpen(false)
+    }
+  }
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -144,6 +164,8 @@ const POSMostrador = () => {
         const list = getList(ordersData.value, ['orders'])
         setOrders(list)
       }
+
+      await checkCashStatus()
     } catch (err) {
       setError(err.message || 'No se pudieron cargar datos del POS')
     } finally {
@@ -300,20 +322,9 @@ const POSMostrador = () => {
               background: #fff;
             }
             .center { text-align: center; }
-            .title {
-              font-size: 24px;
-              font-weight: 900;
-              margin: 0;
-            }
-            .subtitle {
-              font-size: 14px;
-              font-weight: 700;
-              margin-top: 4px;
-            }
-            .line {
-              border-top: 2px dashed #000;
-              margin: 10px 0;
-            }
+            .title { font-size: 24px; font-weight: 900; margin: 0; }
+            .subtitle { font-size: 14px; font-weight: 700; margin-top: 4px; }
+            .line { border-top: 2px dashed #000; margin: 10px 0; }
             .item {
               display: flex;
               gap: 8px;
@@ -323,20 +334,9 @@ const POSMostrador = () => {
             }
             .qty { min-width: 42px; }
             .name { flex: 1; }
-            .notes-title {
-              font-size: 16px;
-              font-weight: 900;
-              margin-bottom: 4px;
-            }
-            .notes {
-              font-size: 17px;
-              font-weight: 900;
-              white-space: pre-wrap;
-            }
-            .footer {
-              font-size: 12px;
-              margin-top: 10px;
-            }
+            .notes-title { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
+            .notes { font-size: 17px; font-weight: 900; white-space: pre-wrap; }
+            .footer { font-size: 12px; margin-top: 10px; }
           </style>
         </head>
 
@@ -409,16 +409,9 @@ const POSMostrador = () => {
               background: #fff;
             }
             .center { text-align: center; }
-            .brand {
-              font-size: 22px;
-              font-weight: 900;
-              margin: 0;
-            }
+            .brand { font-size: 22px; font-weight: 900; margin: 0; }
             .small { font-size: 11px; }
-            .line {
-              border-top: 1px dashed #000;
-              margin: 8px 0;
-            }
+            .line { border-top: 1px dashed #000; margin: 8px 0; }
             .row,
             .product {
               display: flex;
@@ -426,19 +419,9 @@ const POSMostrador = () => {
               gap: 8px;
               margin: 6px 0;
             }
-            .right {
-              text-align: right;
-              white-space: nowrap;
-            }
-            .total {
-              font-size: 18px;
-              font-weight: 900;
-            }
-            .thanks {
-              font-size: 12px;
-              margin-top: 10px;
-              text-align: center;
-            }
+            .right { text-align: right; white-space: nowrap; }
+            .total { font-size: 18px; font-weight: 900; }
+            .thanks { font-size: 12px; margin-top: 10px; text-align: center; }
           </style>
         </head>
 
@@ -514,6 +497,12 @@ const POSMostrador = () => {
     setMessage('')
 
     try {
+      await checkCashStatus()
+
+      if (!cashOpen) {
+        throw new Error('Debes abrir caja antes de registrar ventas')
+      }
+
       if (cart.length === 0) {
         throw new Error('Agrega productos al pedido')
       }
@@ -580,6 +569,12 @@ const POSMostrador = () => {
           {message && (
             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
               {message}
+            </div>
+          )}
+
+          {!cashOpen && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded font-bold">
+              ⚠ Caja cerrada. Debes abrir caja antes de vender.
             </div>
           )}
 
@@ -777,11 +772,15 @@ const POSMostrador = () => {
 
                 <button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || !cashOpen}
                   onClick={submitOrder}
                   className="w-full bg-black text-yellow-400 font-poppins font-bold py-3 rounded-lg hover:bg-yellow-400 hover:text-black transition-all disabled:opacity-50"
                 >
-                  {saving ? 'Registrando...' : 'Pagar y registrar'}
+                  {!cashOpen
+                    ? 'Caja cerrada'
+                    : saving
+                      ? 'Registrando...'
+                      : 'Pagar y registrar'}
                 </button>
 
                 <button
