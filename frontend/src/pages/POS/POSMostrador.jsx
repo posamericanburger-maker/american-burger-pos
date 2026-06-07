@@ -81,6 +81,7 @@ const POSMostrador = () => {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [notes, setNotes] = useState('')
+  const [customerName, setCustomerName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -277,6 +278,7 @@ const POSMostrador = () => {
   const clearOrder = () => {
     setCart([])
     setNotes('')
+    setCustomerName('')
     setPaymentMethod('cash')
   }
 
@@ -331,6 +333,18 @@ const POSMostrador = () => {
             }
             .qty { min-width: 42px; }
             .name { flex: 1; }
+            .customer-title {
+              font-size: 15px;
+              font-weight: 900;
+              text-align: center;
+              margin-bottom: 3px;
+            }
+            .customer-name {
+              font-size: 21px;
+              font-weight: 900;
+              text-align: center;
+              text-transform: uppercase;
+            }
             .notes-title { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
             .notes { font-size: 17px; font-weight: 900; white-space: pre-wrap; }
             .footer { font-size: 12px; margin-top: 10px; }
@@ -345,6 +359,16 @@ const POSMostrador = () => {
           </div>
 
           <div class="line"></div>
+
+          ${
+            customerName.trim()
+              ? `
+                <div class="customer-title">CLIENTE</div>
+                <div class="customer-name">${customerName.trim()}</div>
+                <div class="line"></div>
+              `
+              : ''
+          }
 
           ${productLines}
 
@@ -446,6 +470,17 @@ const POSMostrador = () => {
             <span>Mostrador</span>
           </div>
 
+          ${
+            customerName.trim()
+              ? `
+                <div class="row">
+                  <span>Cliente</span>
+                  <span>${customerName.trim()}</span>
+                </div>
+              `
+              : ''
+          }
+
           <div class="row">
             <span>Pago</span>
             <span>${paymentMethodText}</span>
@@ -512,6 +547,13 @@ const POSMostrador = () => {
         subtotal: total,
         total,
         total_amount: total,
+        customer: {
+          name: customerName.trim(),
+          phone: '',
+          address: '',
+          reference: ''
+        },
+        customer_name: customerName.trim() || null,
         notes: notes.trim(),
         items: cart.map((item) => ({
           product_id: item.id,
@@ -798,6 +840,20 @@ const POSMostrador = () => {
                 )}
 
                 <div className="border-t mt-5 pt-5 space-y-4">
+                  <div>
+                    <label className="label font-bold">
+                      Cliente opcional
+                    </label>
+
+                    <input
+                      type="text"
+                      className="input"
+                      value={customerName}
+                      onChange={(event) => setCustomerName(event.target.value)}
+                      placeholder="Ej: Daniel, mesa 1, cliente mostrador..."
+                    />
+                  </div>
+
                   <div>
                     <label className="label">Notas del pedido</label>
                     <textarea
