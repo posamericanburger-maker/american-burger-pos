@@ -35,6 +35,7 @@ const getList = (data, keys = []) => {
 }
 
 const CashRegister = () => {
+  const [activeTab, setActiveTab] = useState('caja')
   const [sessions, setSessions] = useState([])
   const [movements, setMovements] = useState([])
   const [orders, setOrders] = useState([])
@@ -47,8 +48,8 @@ const CashRegister = () => {
   const [supplierForm, setSupplierForm] = useState({
     id: '',
     name: '',
-    phone: '',
     rut: '',
+    phone: '',
     note: ''
   })
 
@@ -122,77 +123,6 @@ const CashRegister = () => {
     localStorage.setItem('cashExpenseRecords', JSON.stringify(nextRecords))
   }
 
-  const saveSupplier = (event) => {
-    event.preventDefault()
-    setError('')
-    setMessage('')
-
-    if (!supplierForm.name.trim()) {
-      setError('Ingresa el nombre del proveedor')
-      return
-    }
-
-    if (supplierForm.id) {
-      const updated = suppliers.map((supplier) =>
-        supplier.id === supplierForm.id
-          ? {
-              ...supplier,
-              name: supplierForm.name.trim(),
-              phone: supplierForm.phone.trim(),
-              rut: supplierForm.rut.trim(),
-              note: supplierForm.note.trim()
-            }
-          : supplier
-      )
-
-      saveSuppliers(updated)
-      setMessage('Proveedor actualizado correctamente')
-    } else {
-      const newSupplier = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        name: supplierForm.name.trim(),
-        phone: supplierForm.phone.trim(),
-        rut: supplierForm.rut.trim(),
-        note: supplierForm.note.trim(),
-        created_at: new Date().toISOString()
-      }
-
-      saveSuppliers([newSupplier, ...suppliers])
-      setMessage('Proveedor agregado correctamente')
-    }
-
-    setSupplierForm({
-      id: '',
-      name: '',
-      phone: '',
-      rut: '',
-      note: ''
-    })
-  }
-
-  const editSupplier = (supplier) => {
-    setSupplierForm({
-      id: supplier.id,
-      name: supplier.name || '',
-      phone: supplier.phone || '',
-      rut: supplier.rut || '',
-      note: supplier.note || ''
-    })
-  }
-
-  const deleteSupplier = (supplierId) => {
-    const confirmDelete = window.confirm('¿Eliminar este proveedor?')
-    if (!confirmDelete) return
-
-    saveSuppliers(suppliers.filter((supplier) => supplier.id !== supplierId))
-
-    if (movement.supplierId === supplierId) {
-      setMovement((current) => ({ ...current, supplierId: '' }))
-    }
-
-    setMessage('Proveedor eliminado')
-  }
-
   const loadCash = async () => {
     setLoading(true)
     setError('')
@@ -231,6 +161,7 @@ const CashRegister = () => {
 
   const activeSession = sessions.find((session) => {
     const status = String(session.status || '').toLowerCase()
+
     return (
       status === 'open' ||
       status === 'abierta' ||
@@ -346,6 +277,150 @@ const CashRegister = () => {
     }
   }
 
+  const closeCash = async () => {
+    setSaving(true)
+    setError('')
+    setMessage('')
+
+    try {
+      if (!activeSession) {
+        throw new Error('No hay caja abierta')
+      }
+
+      const closingData = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        date: new Date().toISOString(),
+        session_id: activeSession.id || '',
+        opening,
+        sales_cash: salesByPayment.cash,
+        sales_debit: salesByPayment.debit,
+        sales_credit: salesByPayment.credit,
+        sales_transfer: salesByPayment.transfer,
+        total_sales: totalSales,
+        income: totalIncome,
+        expenses: totalExpenses,
+        withdrawals: totalWithdrawals,
+        expected_cash: expectedCash,
+        expected_debit: expectedDebit,
+        expected_credit: expectedCredit,
+        expected_transfer: expectedTransfer,
+        expected_total: expectedTotal,
+        real_cash: realCash,
+        real_debit: realDebit,
+        real_credit: realCredit,
+        real_transfer: realTransfer,
+        real_total: realTotal,
+        difference
+      }
+
+      await request('/cash/close', {
+        method: 'POST',
+        body: JSON.stringify({
+          closing_amount: realTotal,
+          final_amount: realTotal
+        })
+      })
+
+      const updatedClosings = [closingData, ...cashClosings]
+      setCashClosings(updatedClosings)
+      localStorage.setItem('cashClosings', JSON.stringify(updatedClosings))
+
+      setClosingAmounts({
+        cash: '',
+        debit: '',
+        credit: '',
+        transfer: ''
+      })
+
+      setMessage(
+        difference > 0
+          ? `Caja cerrada con sobrante de ${money(difference)}`
+          : difference < 0
+            ? `Caja cerrada con faltante de ${money(Math.abs(difference))}`
+            : 'Caja cerrada correctamente. Caja cuadrada.'
+      )
+
+      await loadCash()
+    } catch (err) {
+      setError(err.message || 'No se pudo cerrar caja')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveSupplier = (event) => {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+
+    if (!supplierForm.name.trim()) {
+      setError('Ingresa el nombre del proveedor')
+      return
+    }
+
+    if (supplierForm.id) {
+      const updated = suppliers.map((supplier) =>
+        supplier.id === supplierForm.id
+          ? {
+              ...supplier,
+              name: supplierForm.name.trim(),
+              rut: supplierForm.rut.trim(),
+              phone: supplierForm.phone.trim(),
+              note: supplierForm.note.trim()
+            }
+          : supplier
+      )
+
+      saveSuppliers(updated)
+      setMessage('Proveedor actualizado correctamente')
+    } else {
+      const newSupplier = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        name: supplierForm.name.trim(),
+        rut: supplierForm.rut.trim(),
+        phone: supplierForm.phone.trim(),
+        note: supplierForm.note.trim(),
+        created_at: new Date().toISOString()
+      }
+
+      saveSuppliers([newSupplier, ...suppliers])
+      setMessage('Proveedor agregado correctamente')
+    }
+
+    setSupplierForm({
+      id: '',
+      name: '',
+      rut: '',
+      phone: '',
+      note: ''
+    })
+  }
+
+  const editSupplier = (supplier) => {
+    setSupplierForm({
+      id: supplier.id,
+      name: supplier.name || '',
+      rut: supplier.rut || '',
+      phone: supplier.phone || '',
+      note: supplier.note || ''
+    })
+
+    setActiveTab('proveedores')
+  }
+
+  const deleteSupplier = (supplierId) => {
+    const confirmDelete = window.confirm('¿Eliminar este proveedor?')
+    if (!confirmDelete) return
+
+    saveSuppliers(suppliers.filter((supplier) => supplier.id !== supplierId))
+
+    if (movement.supplierId === supplierId) {
+      setMovement((current) => ({ ...current, supplierId: '' }))
+    }
+
+    setMessage('Proveedor eliminado')
+  }
+
   const saveMovement = async (event) => {
     event.preventDefault()
     setSaving(true)
@@ -423,6 +498,13 @@ const CashRegister = () => {
     }
   }
 
+  const deleteExpenseRecord = (id) => {
+    const confirmDelete = window.confirm('¿Eliminar este gasto del registro Excel?')
+    if (!confirmDelete) return
+
+    saveExpenseRecords(expenseRecords.filter((item) => item.id !== id))
+  }
+
   const exportExpensesExcel = () => {
     const rows = expenseRecords.map((item) => ({
       Fecha: new Date(item.fecha).toLocaleDateString('es-CL'),
@@ -453,153 +535,13 @@ const CashRegister = () => {
     saveAs(blob, `Gastos_American_Burger_${Date.now()}.xlsx`)
   }
 
-  const printClosingReport = (closing) => {
-    const diffText =
-      Number(closing.difference || 0) > 0
-        ? `SOBRANTE ${money(closing.difference)}`
-        : Number(closing.difference || 0) < 0
-          ? `FALTANTE ${money(Math.abs(closing.difference))}`
-          : 'CAJA CUADRADA'
-
-    const html = `
-      <html>
-        <head>
-          <title>Cierre de Caja</title>
-          <style>
-            @page { size: 80mm auto; margin: 0; }
-            body {
-              width: 80mm;
-              margin: 0;
-              padding: 6mm 4mm;
-              font-family: Arial, monospace;
-              font-size: 12px;
-              color: #000;
-            }
-            .center { text-align: center; }
-            .brand { font-size: 22px; font-weight: 900; margin: 0; }
-            .line { border-top: 1px dashed #000; margin: 8px 0; }
-            .row { display: flex; justify-content: space-between; gap: 8px; margin: 5px 0; }
-            .total { font-size: 16px; font-weight: 900; }
-            .result { font-size: 18px; font-weight: 900; text-align: center; margin-top: 8px; }
-          </style>
-        </head>
-        <body>
-          <div class="center">
-            <h1 class="brand">AMERICAN BURGER</h1>
-            <div>CIERRE DE CAJA</div>
-            <div>${new Date(closing.date).toLocaleString('es-CL')}</div>
-          </div>
-
-          <div class="line"></div>
-          <div class="row"><span>Monto inicial</span><strong>${money(closing.opening)}</strong></div>
-          <div class="line"></div>
-
-          <div class="row"><span>Ventas efectivo</span><strong>${money(closing.sales_cash)}</strong></div>
-          <div class="row"><span>Ventas débito</span><strong>${money(closing.sales_debit)}</strong></div>
-          <div class="row"><span>Ventas crédito</span><strong>${money(closing.sales_credit)}</strong></div>
-          <div class="row"><span>Ventas transferencia</span><strong>${money(closing.sales_transfer)}</strong></div>
-          <div class="row total"><span>Total ventas</span><strong>${money(closing.total_sales)}</strong></div>
-
-          <div class="line"></div>
-          <div class="row"><span>Ingresos manuales</span><strong>${money(closing.income)}</strong></div>
-          <div class="row"><span>Gastos</span><strong>${money(closing.expenses)}</strong></div>
-          <div class="row"><span>Retiros</span><strong>${money(closing.withdrawals)}</strong></div>
-
-          <div class="line"></div>
-          <div class="row total"><span>Esperado total</span><strong>${money(closing.expected_total)}</strong></div>
-          <div class="row total"><span>Real total</span><strong>${money(closing.real_total)}</strong></div>
-
-          <div class="line"></div>
-          <div class="result">${diffText}</div>
-          <div class="line"></div>
-          <div class="center">American Burger</div>
-        </body>
-      </html>
-    `
-
-    const win = window.open('', '_blank')
-    if (!win) return
-
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-
-    setTimeout(() => {
-      win.print()
-    }, 500)
-  }
-
-  const closeCash = async () => {
-    setSaving(true)
-    setError('')
-    setMessage('')
-
-    try {
-      if (!activeSession) {
-        throw new Error('No hay caja abierta')
-      }
-
-      const closingData = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        date: new Date().toISOString(),
-        session_id: activeSession.id || '',
-        opening,
-        sales_cash: salesByPayment.cash,
-        sales_debit: salesByPayment.debit,
-        sales_credit: salesByPayment.credit,
-        sales_transfer: salesByPayment.transfer,
-        total_sales: totalSales,
-        income: totalIncome,
-        expenses: totalExpenses,
-        withdrawals: totalWithdrawals,
-        expected_cash: expectedCash,
-        expected_debit: expectedDebit,
-        expected_credit: expectedCredit,
-        expected_transfer: expectedTransfer,
-        expected_total: expectedTotal,
-        real_cash: realCash,
-        real_debit: realDebit,
-        real_credit: realCredit,
-        real_transfer: realTransfer,
-        real_total: realTotal,
-        difference
-      }
-
-      await request('/cash/close', {
-        method: 'POST',
-        body: JSON.stringify({
-          closing_amount: realTotal,
-          final_amount: realTotal
-        })
-      })
-
-      const updatedClosings = [closingData, ...cashClosings]
-      setCashClosings(updatedClosings)
-      localStorage.setItem('cashClosings', JSON.stringify(updatedClosings))
-
-      setClosingAmounts({
-        cash: '',
-        debit: '',
-        credit: '',
-        transfer: ''
-      })
-
-      setMessage(
-        difference > 0
-          ? `Caja cerrada con sobrante de ${money(difference)}`
-          : difference < 0
-            ? `Caja cerrada con faltante de ${money(Math.abs(difference))}`
-            : 'Caja cerrada correctamente. Caja cuadrada.'
-      )
-
-      printClosingReport(closingData)
-      await loadCash()
-    } catch (err) {
-      setError(err.message || 'No se pudo cerrar caja')
-    } finally {
-      setSaving(false)
-    }
-  }
+  const tabs = [
+    { id: 'caja', label: 'Caja', icon: '💰' },
+    { id: 'gastos', label: 'Gastos', icon: '🧾' },
+    { id: 'proveedores', label: 'Proveedores', icon: '🚚' },
+    { id: 'cierres', label: 'Cierres', icon: '📋' },
+    { id: 'movimientos', label: 'Movimientos', icon: '📊' }
+  ]
 
   return (
     <div className="page-container">
@@ -641,7 +583,9 @@ const CashRegister = () => {
 
             <div className="card p-4">
               <p className="text-gray-500 text-sm">Gastos/Retiros</p>
-              <h2 className="text-xl font-bold text-red-600">{money(totalExpenses + totalWithdrawals)}</h2>
+              <h2 className="text-xl font-bold text-red-600">
+                {money(totalExpenses + totalWithdrawals)}
+              </h2>
             </div>
 
             <div className="card p-4">
@@ -650,10 +594,30 @@ const CashRegister = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 2xl:grid-cols-12 gap-5">
-            <div className="2xl:col-span-4 space-y-5">
+          <div className="card p-3">
+            <div className="flex flex-wrap gap-3">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-5 py-3 rounded-xl font-bold border transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-black text-yellow-400 border-black shadow-md'
+                      : 'bg-yellow-50 text-black border-yellow-300 hover:bg-yellow-100'
+                  }`}
+                >
+                  <span className="mr-2">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeTab === 'caja' && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               <div className="card">
-                <h2 className="text-xl font-bold mb-3">Caja</h2>
+                <h2 className="text-xl font-bold mb-3">Abrir caja</h2>
 
                 <label className="label">Monto inicial efectivo</label>
                 <input
@@ -738,7 +702,13 @@ const CashRegister = () => {
                       <strong>{money(realTotal)}</strong>
                     </div>
 
-                    <div className={`flex justify-between font-bold ${difference < 0 ? 'text-red-600' : difference > 0 ? 'text-green-600' : ''}`}>
+                    <div className={`flex justify-between font-bold ${
+                      difference < 0
+                        ? 'text-red-600'
+                        : difference > 0
+                          ? 'text-green-600'
+                          : ''
+                    }`}>
                       <span>Diferencia</span>
                       <strong>{money(difference)}</strong>
                     </div>
@@ -750,7 +720,7 @@ const CashRegister = () => {
                     onClick={closeCash}
                     className="w-full mt-3 bg-red-600 text-white font-bold py-3 rounded-lg disabled:opacity-50"
                   >
-                    Cerrar caja e imprimir cierre
+                    Cerrar caja
                   </button>
                 </div>
               </div>
@@ -801,9 +771,11 @@ const CashRegister = () => {
                 </div>
               </div>
             </div>
+          )}
 
-            <div className="2xl:col-span-4">
-              <div className="card h-full">
+          {activeTab === 'gastos' && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="card">
                 <h2 className="text-xl font-bold mb-3">Registrar gasto / movimiento</h2>
 
                 <form onSubmit={saveMovement} className="space-y-3">
@@ -886,57 +858,84 @@ const CashRegister = () => {
                     Registrar movimiento
                   </button>
                 </form>
+              </div>
 
-                <div className="border-t mt-5 pt-4">
-                  <div className="flex justify-between items-center gap-3 mb-3">
-                    <h3 className="font-bold">Gastos registrados</h3>
+              <div className="card">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Registro de gastos exportable</h2>
 
-                    <button
-                      type="button"
-                      onClick={exportExpensesExcel}
-                      disabled={expenseRecords.length === 0}
-                      className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50"
-                    >
-                      Descargar Excel
-                    </button>
+                  <button
+                    type="button"
+                    onClick={exportExpensesExcel}
+                    disabled={expenseRecords.length === 0}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50"
+                  >
+                    Descargar Excel
+                  </button>
+                </div>
+
+                {expenseRecords.length === 0 ? (
+                  <div className="text-center text-gray-500 py-10">
+                    No hay gastos guardados.
                   </div>
+                ) : (
+                  <div className="space-y-3 max-h-[520px] overflow-y-auto">
+                    {expenseRecords.map((item) => (
+                      <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex justify-between gap-3">
+                          <div>
+                            <p className="font-bold">
+                              {item.proveedor || 'Sin proveedor'}
+                            </p>
 
-                  {expenseRecords.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No hay gastos guardados.</p>
-                  ) : (
-                    <div className="max-h-[320px] overflow-y-auto space-y-2">
-                      {expenseRecords.map((item) => (
-                        <div key={item.id} className="border rounded-lg p-3 bg-gray-50">
-                          <div className="flex justify-between gap-3">
-                            <div>
-                              <p className="font-bold">{item.proveedor || 'Sin proveedor'}</p>
-                              <p className="text-xs text-gray-500">
-                                {new Date(item.fecha).toLocaleString('es-CL')}
+                            <p className="text-xs text-gray-500">
+                              {new Date(item.fecha).toLocaleString('es-CL')}
+                            </p>
+
+                            {item.documento && (
+                              <p className="text-sm text-gray-600">
+                                Documento: {item.documento}
                               </p>
-                              {item.documento && (
-                                <p className="text-xs text-gray-500">
-                                  Doc: {item.documento}
-                                </p>
-                              )}
-                              {item.descripcion && (
-                                <p className="text-sm mt-1">{item.descripcion}</p>
-                              )}
-                            </div>
+                            )}
 
-                            <strong className="text-red-600">
+                            {item.rut && (
+                              <p className="text-sm text-gray-600">
+                                RUT: {item.rut}
+                              </p>
+                            )}
+
+                            {item.descripcion && (
+                              <p className="text-sm mt-1">
+                                {item.descripcion}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <strong className="text-red-600 text-lg">
                               {money(item.monto)}
                             </strong>
+
+                            <button
+                              type="button"
+                              onClick={() => deleteExpenseRecord(item.id)}
+                              className="block mt-2 bg-red-600 text-white px-3 py-1 rounded text-sm font-bold"
+                            >
+                              Eliminar
+                            </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            <div className="2xl:col-span-4">
-              <div className="card h-full">
+          {activeTab === 'proveedores' && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="card">
                 <h2 className="text-xl font-bold mb-3">
                   {supplierForm.id ? 'Editar proveedor' : 'Agregar proveedor'}
                 </h2>
@@ -992,8 +991,8 @@ const CashRegister = () => {
                         setSupplierForm({
                           id: '',
                           name: '',
-                          phone: '',
                           rut: '',
+                          phone: '',
                           note: ''
                         })
                       }
@@ -1003,57 +1002,57 @@ const CashRegister = () => {
                     </button>
                   )}
                 </form>
+              </div>
 
-                <div className="border-t mt-4 pt-4">
-                  <h3 className="font-bold mb-2">Proveedores</h3>
+              <div className="card">
+                <h2 className="text-xl font-bold mb-3">Proveedores</h2>
 
-                  {suppliers.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No hay proveedores guardados.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-[360px] overflow-y-auto">
-                      {suppliers.map((supplier) => (
-                        <div key={supplier.id} className="border rounded-lg p-3 bg-gray-50">
-                          <p className="font-bold">{supplier.name}</p>
+                {suppliers.length === 0 ? (
+                  <p className="text-gray-500">No hay proveedores guardados.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[520px] overflow-y-auto">
+                    {suppliers.map((supplier) => (
+                      <div key={supplier.id} className="border rounded-lg p-4 bg-gray-50">
+                        <p className="font-bold">{supplier.name}</p>
 
-                          {supplier.rut && (
-                            <p className="text-sm text-gray-500">RUT: {supplier.rut}</p>
-                          )}
+                        {supplier.rut && (
+                          <p className="text-sm text-gray-500">RUT: {supplier.rut}</p>
+                        )}
 
-                          {supplier.phone && (
-                            <p className="text-sm text-gray-500">Tel: {supplier.phone}</p>
-                          )}
+                        {supplier.phone && (
+                          <p className="text-sm text-gray-500">Tel: {supplier.phone}</p>
+                        )}
 
-                          {supplier.note && (
-                            <p className="text-sm text-gray-500">{supplier.note}</p>
-                          )}
+                        {supplier.note && (
+                          <p className="text-sm text-gray-500">{supplier.note}</p>
+                        )}
 
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              type="button"
-                              onClick={() => editSupplier(supplier)}
-                              className="bg-black text-yellow-400 px-3 py-2 rounded font-bold text-sm"
-                            >
-                              Editar
-                            </button>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            type="button"
+                            onClick={() => editSupplier(supplier)}
+                            className="bg-black text-yellow-400 px-3 py-2 rounded font-bold text-sm"
+                          >
+                            Editar
+                          </button>
 
-                            <button
-                              type="button"
-                              onClick={() => deleteSupplier(supplier.id)}
-                              className="bg-red-600 text-white px-3 py-2 rounded font-bold text-sm"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteSupplier(supplier.id)}
+                            className="bg-red-600 text-white px-3 py-2 rounded font-bold text-sm"
+                          >
+                            Eliminar
+                          </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          {activeTab === 'cierres' && (
             <div className="card">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">Historial de cierres</h2>
@@ -1068,7 +1067,7 @@ const CashRegister = () => {
               </div>
 
               {cashClosings.length === 0 ? (
-                <div className="text-center text-gray-500 py-6">
+                <div className="text-center text-gray-500 py-10">
                   No hay cierres registrados.
                 </div>
               ) : (
@@ -1081,7 +1080,6 @@ const CashRegister = () => {
                         <th>Esperado</th>
                         <th>Real</th>
                         <th>Diferencia</th>
-                        <th className="text-right">Acción</th>
                       </tr>
                     </thead>
 
@@ -1105,14 +1103,6 @@ const CashRegister = () => {
                           >
                             {money(closing.difference)}
                           </td>
-                          <td className="text-right">
-                            <button
-                              onClick={() => printClosingReport(closing)}
-                              className="bg-black text-yellow-400 px-3 py-2 rounded font-bold"
-                            >
-                              Imprimir
-                            </button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1120,7 +1110,9 @@ const CashRegister = () => {
                 </div>
               )}
             </div>
+          )}
 
+          {activeTab === 'movimientos' && (
             <div className="card">
               <h2 className="text-xl font-bold mb-4">Movimientos de caja</h2>
 
@@ -1152,7 +1144,9 @@ const CashRegister = () => {
                           </td>
                           <td>{item.type}</td>
                           <td>{item.description || item.notes || 'Sin descripción'}</td>
-                          <td className="text-right font-bold">{money(item.amount)}</td>
+                          <td className="text-right font-bold">
+                            {money(item.amount)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1160,7 +1154,7 @@ const CashRegister = () => {
                 </div>
               )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
