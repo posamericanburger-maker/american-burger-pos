@@ -2,15 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://american-burger-pos-api-d8r1.onrender.com/api'
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://american-burger-pos-api-d8r1.onrender.com/api'
 
-const money = (value) => {
-  return new Intl.NumberFormat('es-CL', {
+const money = (value) =>
+  new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: 'CLP',
     maximumFractionDigits: 0
   }).format(Number(value || 0))
-}
 
 const getToken = () =>
   localStorage.getItem('token') ||
@@ -20,11 +21,14 @@ const getToken = () =>
 
 const getList = (data, keys = []) => {
   if (Array.isArray(data)) return data
+
   for (const key of keys) {
     if (Array.isArray(data?.[key])) return data[key]
   }
+
   if (Array.isArray(data?.data)) return data.data
   if (Array.isArray(data?.items)) return data.items
+
   return []
 }
 
@@ -38,29 +42,46 @@ const normalizeText = (value = '') =>
 const categoryLabel = (name = '') => {
   const normalized = normalizeText(name)
 
-  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) return '🍔 HAMBURGUESAS'
-  if (normalized.includes('PAPA') || normalized.includes('SNACK') || normalized.includes('FRITA')) return '🍟 PAPAS & SNACKS'
+  if (normalized.includes('HAMBURGUESA') || normalized.includes('BURGER')) return '🍔 BURGERS'
+  if (normalized.includes('PAPA') || normalized.includes('SNACK') || normalized.includes('FRITA')) return '🍟 PAPAS'
   if (normalized.includes('BEBIDA')) return '🥤 BEBIDAS'
-  if (normalized.includes('INGREDIENTE') || normalized.includes('EXTRA') || normalized.includes('+')) return '➕ INGREDIENTES'
-  if (normalized.includes('POLLO') || normalized.includes('CHICKEN') || normalized.includes('CRISPY') || normalized.includes('ALITA') || normalized.includes('TENDER')) return '🍗 POLLO CRISPY'
+  if (normalized.includes('INGREDIENTE') || normalized.includes('EXTRA') || normalized.includes('+')) return '➕ EXTRAS'
+  if (normalized.includes('POLLO') || normalized.includes('CHICKEN') || normalized.includes('CRISPY') || normalized.includes('ALITA') || normalized.includes('TENDER')) return '🍗 POLLO'
   if (normalized.includes('COMBO')) return '🎯 COMBOS'
 
-  return name
+  return `📦 ${name}`
+}
+
+const productIcon = (product = {}) => {
+  const text = normalizeText(
+    `${product.name || ''} ${product.category_name || ''} ${product.category?.name || ''}`
+  )
+
+  if (text.includes('BEBIDA') || text.includes('LATA') || text.includes('COCA')) return '🥤'
+  if (text.includes('PAPA') || text.includes('FRITA')) return '🍟'
+  if (text.includes('ALITA') || text.includes('POLLO') || text.includes('CRISPY') || text.includes('TENDER')) return '🍗'
+  if (text.includes('BACON') || text.includes('TOCINO')) return '🥓'
+  if (text.includes('QUESO') || text.includes('CHEESE')) return '🧀'
+  if (text.includes('COMBO')) return '🎯'
+  if (text.includes('SALSA')) return '🥫'
+
+  return '🍔'
 }
 
 const categoryOrderIndex = (name = '') => {
   const label = categoryLabel(name)
 
   const order = [
-    '🍔 HAMBURGUESAS',
-    '🍟 PAPAS & SNACKS',
+    '🍔 BURGERS',
+    '🍟 PAPAS',
     '🥤 BEBIDAS',
-    '➕ INGREDIENTES',
-    '🍗 POLLO CRISPY',
+    '🍗 POLLO',
+    '➕ EXTRAS',
     '🎯 COMBOS'
   ]
 
   const index = order.indexOf(label)
+
   return index === -1 ? 999 : index
 }
 
@@ -88,6 +109,7 @@ const POSDelivery = () => {
 
   const headers = useMemo(() => {
     const token = getToken()
+
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -126,6 +148,7 @@ const POSDelivery = () => {
 
       const activeSession = sessions.find((session) => {
         const status = String(session.status || '').toLowerCase()
+
         return (
           status === 'open' ||
           status === 'abierta' ||
@@ -135,10 +158,12 @@ const POSDelivery = () => {
 
       const isOpen = Boolean(activeSession)
       setCashOpen(isOpen)
+
       return isOpen
     } catch (err) {
       console.error('Error verificando caja:', err)
       setCashOpen(false)
+
       return false
     }
   }
@@ -191,6 +216,7 @@ const POSDelivery = () => {
     if (product.category_name) return product.category_name
 
     const category = categories.find((item) => item.id === product.category_id)
+
     return category?.name || 'Sin categoría'
   }
 
@@ -226,7 +252,8 @@ const POSDelivery = () => {
           name: product.name,
           price: Number(product.price || 0),
           quantity: 1,
-          category_name: productCategoryName(product)
+          category_name: productCategoryName(product),
+          icon: productIcon(product)
         }
       ]
     })
@@ -259,12 +286,13 @@ const POSDelivery = () => {
   const deliveryFee = Number(customer.deliveryFee || 0)
   const total = subtotal + deliveryFee
 
-  const paymentMethodText = {
-    cash: 'Efectivo',
-    debit: 'Débito',
-    credit: 'Crédito',
-    transfer: 'Transferencia'
-  }[customer.paymentMethod] || customer.paymentMethod
+  const paymentMethodText =
+    {
+      cash: 'Efectivo',
+      debit: 'Débito',
+      credit: 'Crédito',
+      transfer: 'Transferencia'
+    }[customer.paymentMethod] || customer.paymentMethod
 
   const handleCustomerChange = (event) => {
     const { name, value } = event.target
@@ -290,12 +318,14 @@ const POSDelivery = () => {
 
   const printKitchenTicket = () => {
     const productLines = cart
-      .map((item) => `
+      .map(
+        (item) => `
         <div class="item">
           <div class="qty">${item.quantity} x</div>
           <div class="name">${item.name}</div>
         </div>
-      `)
+      `
+      )
       .join('')
 
     const html = `
@@ -330,6 +360,7 @@ const POSDelivery = () => {
             .footer { font-size: 12px; margin-top: 10px; }
           </style>
         </head>
+
         <body>
           <div class="center">
             <h1 class="title">COMANDA</h1>
@@ -352,6 +383,7 @@ const POSDelivery = () => {
 
     const win = window.open('', '_blank')
     if (!win) return
+
     win.document.write(html)
     win.document.close()
     win.focus()
@@ -399,7 +431,8 @@ const POSDelivery = () => {
             .small { font-size: 11px; }
             .line { border-top: 1px dashed #000; margin: 8px 0; }
             .section-title { font-size: 13px; font-weight: 900; margin-bottom: 4px; }
-            .row, .product {
+            .row,
+            .product {
               display: flex;
               justify-content: space-between;
               gap: 8px;
@@ -484,6 +517,7 @@ const POSDelivery = () => {
 
     const win = window.open('', '_blank')
     if (!win) return
+
     win.document.write(html)
     win.document.close()
     win.focus()
@@ -561,6 +595,7 @@ const POSDelivery = () => {
       const quantity = Number(item.quantity || 1)
       const price = Number(item.price || 0)
       const lineTotal = quantity * price
+
       return `• ${quantity} x ${item.name} = ${money(lineTotal)}`
     })
     .join('\n')
@@ -603,7 +638,9 @@ Gracias por preferir American Burger 🍔
 
   const whatsappPhone = customer.phone.replace(/[^0-9]/g, '')
   const whatsappUrl = whatsappPhone
-    ? `https://wa.me/${whatsappPhone.startsWith('56') ? whatsappPhone : `56${whatsappPhone}`}?text=${whatsappMessage}`
+    ? `https://wa.me/${
+        whatsappPhone.startsWith('56') ? whatsappPhone : `56${whatsappPhone}`
+      }?text=${whatsappMessage}`
     : '#'
 
   return (
@@ -613,59 +650,63 @@ Gracias por preferir American Burger 🍔
       <div className="page-content">
         <Navbar title="POS - Delivery" />
 
-        <div className="main-content space-y-6">
+        <div className="main-content space-y-5">
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded font-bold">
               {error}
             </div>
           )}
 
           {message && (
-            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded font-bold">
               {message}
             </div>
           )}
 
-          {!cashOpen && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded font-bold">
-              ⚠ Caja cerrada. Debes abrir caja antes de registrar pedidos delivery.
-            </div>
-          )}
+          <div
+            className={`rounded-2xl px-5 py-4 font-bold border ${
+              cashOpen
+                ? 'bg-green-50 border-green-400 text-green-700'
+                : 'bg-red-50 border-red-400 text-red-700'
+            }`}
+          >
+            {cashOpen
+              ? '🟢 CAJA ABIERTA — Puedes registrar delivery'
+              : '🔴 CAJA CERRADA — Abre caja antes de registrar delivery'}
+          </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="card xl:col-span-2">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
-                <div>
-                  <h2 className="text-2xl font-poppins font-bold">
-                    Productos para delivery
-                  </h2>
-                  <p className="text-gray-600">
-                    Selecciona productos y arma el pedido del cliente.
-                  </p>
+          <div className="grid grid-cols-1 2xl:grid-cols-12 gap-5">
+            <div className="2xl:col-span-7 space-y-5">
+              <div className="card">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
+                  <div>
+                    <h2 className="text-3xl font-poppins font-bold">
+                      Productos Delivery
+                    </h2>
+                    <p className="text-gray-600">
+                      Toca un producto para agregarlo al pedido del cliente.
+                    </p>
+                  </div>
+
+                  <input
+                    className="input xl:max-w-md text-lg"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="🔍 Buscar producto..."
+                  />
                 </div>
 
-                <input
-                  className="input md:max-w-xs"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar producto..."
-                />
-              </div>
-
-              <div className="mb-6">
-                <h3 className="font-bold mb-3">Categorías rápidas</h3>
-
-                <div className="flex gap-3 overflow-x-auto pb-2">
+                <div className="flex flex-wrap gap-3 mb-6">
                   <button
                     type="button"
                     onClick={() => setSelectedCategory('all')}
-                    className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                    className={`px-5 py-4 rounded-xl font-bold border text-lg ${
                       selectedCategory === 'all'
-                        ? 'bg-black text-yellow-400 border-black'
-                        : 'bg-white text-black border-gray-300'
+                        ? 'bg-black text-yellow-400 border-black shadow-md'
+                        : 'bg-white text-black border-gray-300 hover:bg-yellow-50'
                     }`}
                   >
-                    Todos
+                    ⭐ TODOS
                   </button>
 
                   {sortedCategories.map((category) => (
@@ -673,67 +714,77 @@ Gracias por preferir American Burger 🍔
                       key={category.id}
                       type="button"
                       onClick={() => setSelectedCategory(category.id)}
-                      className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap border ${
+                      className={`px-5 py-4 rounded-xl font-bold border text-lg ${
                         selectedCategory === category.id
-                          ? 'bg-black text-yellow-400 border-black'
-                          : 'bg-yellow-50 text-black border-yellow-300'
+                          ? 'bg-black text-yellow-400 border-black shadow-md'
+                          : 'bg-yellow-50 text-black border-yellow-300 hover:bg-yellow-100'
                       }`}
                     >
                       {categoryLabel(category.name)}
                     </button>
                   ))}
                 </div>
+
+                {loading ? (
+                  <div className="text-center py-10 text-gray-500">
+                    Cargando productos...
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500">
+                    No hay productos disponibles.
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="font-bold text-xl mb-3">
+                      Productos disponibles
+                    </h3>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
+                      {filteredProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => addToCart(product)}
+                          className="border rounded-2xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400 transition-all bg-white min-h-[170px] flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="text-5xl text-center mb-3">
+                              {productIcon(product)}
+                            </div>
+
+                            <h3 className="font-poppins font-bold text-lg leading-tight">
+                              {product.name}
+                            </h3>
+
+                            <p className="text-xs text-gray-500 mt-1">
+                              {categoryLabel(productCategoryName(product))}
+                            </p>
+                          </div>
+
+                          <div className="mt-3">
+                            <p className="font-bold text-xl">
+                              {money(product.price)}
+                            </p>
+
+                            <div className="mt-2 bg-yellow-400 text-black text-center py-2 rounded-lg font-bold">
+                              + Agregar
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {loading ? (
-                <div className="text-center py-10 text-gray-500">
-                  Cargando productos...
-                </div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">
-                  No hay productos disponibles.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredProducts.map((product) => (
-                    <button
-                      key={product.id}
-                      type="button"
-                      onClick={() => addToCart(product)}
-                      className="border rounded-xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400 transition-all"
-                    >
-                      <div className="flex justify-between gap-3">
-                        <h3 className="font-poppins font-bold text-lg">
-                          {product.name}
-                        </h3>
-
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full h-fit">
-                          {categoryLabel(productCategoryName(product))}
-                        </span>
-                      </div>
-
-                      {product.description && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
-                          {product.description}
-                        </p>
-                      )}
-
-                      <p className="font-bold text-black mt-3">
-                        {money(product.price)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
-            <div className="space-y-6">
+            <div className="2xl:col-span-5 space-y-5">
               <div className="card">
                 <h2 className="text-2xl font-poppins font-bold mb-4">
                   Datos del cliente
                 </h2>
 
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="label">Nombre</label>
                     <input
@@ -756,7 +807,7 @@ Gracias por preferir American Burger 🍔
                     />
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="label">Dirección</label>
                     <input
                       name="address"
@@ -767,7 +818,7 @@ Gracias por preferir American Burger 🍔
                     />
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="label">Referencia</label>
                     <input
                       name="reference"
@@ -778,7 +829,7 @@ Gracias por preferir American Burger 🍔
                     />
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="label">Nota del pedido</label>
                     <textarea
                       name="notes"
@@ -791,25 +842,40 @@ Gracias por preferir American Burger 🍔
                 </div>
               </div>
 
-              <div className="card">
-                <h2 className="text-2xl font-poppins font-bold mb-4">
-                  Pedido delivery
-                </h2>
+              <div className="card sticky top-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-3xl font-poppins font-bold">
+                    Pedido delivery
+                  </h2>
+
+                  <button
+                    type="button"
+                    onClick={clearOrder}
+                    disabled={cart.length === 0}
+                    className="border px-3 py-2 rounded-lg disabled:opacity-40"
+                  >
+                    Limpiar
+                  </button>
+                </div>
 
                 {cart.length === 0 ? (
-                  <div className="text-gray-500 text-center py-6">
+                  <div className="text-gray-500 text-center py-10 border rounded-xl">
                     El pedido está vacío.
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                     {cart.map((item) => (
-                      <div key={item.id} className="border-b pb-3">
+                      <div key={item.id} className="border rounded-xl p-3">
                         <div className="flex justify-between gap-3">
-                          <div>
-                            <p className="font-semibold">{item.name}</p>
-                            <p className="text-sm text-gray-500">
-                              {money(item.price)} c/u
-                            </p>
+                          <div className="flex gap-3">
+                            <div className="text-3xl">{item.icon || '🍔'}</div>
+
+                            <div>
+                              <p className="font-bold">{item.name}</p>
+                              <p className="text-sm text-gray-500">
+                                {money(item.price)} c/u
+                              </p>
+                            </div>
                           </div>
 
                           <button
@@ -817,20 +883,38 @@ Gracias por preferir American Burger 🍔
                             onClick={() => removeItem(item.id)}
                             className="text-red-600 font-bold"
                           >
-                            X
+                            🗑
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-between mt-2">
-                          <input
-                            type="number"
-                            min="1"
-                            className="input max-w-[90px]"
-                            value={item.quantity}
-                            onChange={(event) =>
-                              updateQuantity(item.id, event.target.value)
-                            }
-                          />
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center border rounded-lg overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                              className="px-3 py-2 bg-gray-100 font-bold"
+                            >
+                              -
+                            </button>
+
+                            <input
+                              type="number"
+                              min="1"
+                              className="w-14 text-center py-2 outline-none"
+                              value={item.quantity}
+                              onChange={(event) =>
+                                updateQuantity(item.id, event.target.value)
+                              }
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              className="px-3 py-2 bg-gray-100 font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
 
                           <strong>
                             {money(Number(item.price || 0) * Number(item.quantity || 0))}
@@ -841,70 +925,96 @@ Gracias por preferir American Burger 🍔
                   </div>
                 )}
 
-                <div className="border-t mt-5 pt-5 space-y-3">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <strong>{money(subtotal)}</strong>
-                  </div>
+                <div className="border-t mt-5 pt-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Subtotal</label>
+                      <div className="border rounded-xl px-4 py-3 font-bold bg-gray-50">
+                        {money(subtotal)}
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="label">Costo delivery</label>
-                    <input
-                      name="deliveryFee"
-                      type="number"
-                      min="0"
-                      className="input"
-                      value={customer.deliveryFee}
-                      onChange={handleCustomerChange}
-                    />
+                    <div>
+                      <label className="label">Delivery</label>
+                      <input
+                        name="deliveryFee"
+                        type="number"
+                        min="0"
+                        className="input"
+                        value={customer.deliveryFee}
+                        onChange={handleCustomerChange}
+                      />
+                    </div>
                   </div>
 
                   <div>
                     <label className="label">Medio de pago</label>
-                    <select
-                      name="paymentMethod"
-                      className="input"
-                      value={customer.paymentMethod}
-                      onChange={handleCustomerChange}
-                    >
-                      <option value="cash">Efectivo</option>
-                      <option value="debit">Débito</option>
-                      <option value="credit">Crédito</option>
-                      <option value="transfer">Transferencia</option>
-                    </select>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        ['cash', '💵 Efectivo'],
+                        ['debit', '💳 Débito'],
+                        ['credit', '💳 Crédito'],
+                        ['transfer', '🏦 Transferencia']
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() =>
+                            setCustomer((current) => ({
+                              ...current,
+                              paymentMethod: value
+                            }))
+                          }
+                          className={`py-3 rounded-xl border font-bold ${
+                            customer.paymentMethod === value
+                              ? 'bg-yellow-400 text-black border-yellow-500'
+                              : 'bg-white border-gray-300'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="flex justify-between text-2xl font-bold">
-                    <span>Total</span>
-                    <span>{money(total)}</span>
+                  <div className="bg-gray-50 border rounded-2xl p-4">
+                    <p className="text-gray-500 font-bold">TOTAL DELIVERY</p>
+                    <div className="text-4xl font-black text-right">
+                      {money(total)}
+                    </div>
                   </div>
 
                   <button
                     type="button"
-                    disabled={saving || !cashOpen}
+                    disabled={saving || !cashOpen || cart.length === 0}
                     onClick={submitOrder}
-                    className="w-full bg-black text-yellow-400 font-poppins font-bold py-3 rounded-lg hover:bg-yellow-400 hover:text-black transition-all disabled:opacity-50"
+                    className="w-full bg-yellow-400 text-black font-poppins font-black py-4 rounded-xl hover:bg-black hover:text-yellow-400 transition-all disabled:opacity-50 text-xl"
                   >
                     {!cashOpen
-                      ? 'Caja cerrada'
+                      ? '🔴 Caja cerrada'
                       : saving
                         ? 'Registrando...'
-                        : 'Registrar pedido'}
+                        : `🚗 REGISTRAR ${money(total)}`}
                   </button>
 
                   <a
                     href={whatsappUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="block text-center border border-green-600 text-green-700 font-bold py-3 rounded-lg hover:bg-green-50"
+                    className={`block text-center border font-bold py-3 rounded-xl ${
+                      customer.phone
+                        ? 'border-green-600 text-green-700 hover:bg-green-50'
+                        : 'border-gray-300 text-gray-400 pointer-events-none'
+                    }`}
                   >
-                    Enviar WhatsApp
+                    📲 Enviar WhatsApp
                   </a>
 
                   <button
                     type="button"
                     onClick={clearOrder}
-                    className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
+                    className="w-full border border-gray-300 py-3 rounded-xl hover:bg-gray-100 font-bold"
                   >
                     Limpiar pedido
                   </button>
