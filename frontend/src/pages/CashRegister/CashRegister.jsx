@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://american-burger-pos-api-d8r1.onrender.com/api'
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://american-burger-pos-api-d8r1.onrender.com/api'
 
 const money = (value) => {
   return new Intl.NumberFormat('es-CL', {
@@ -28,19 +30,21 @@ const getList = (data, keys = []) => {
   return []
 }
 
-const paymentLabel = (method) => ({
-  cash: 'Efectivo',
-  debit: 'Débito',
-  credit: 'Crédito',
-  transfer: 'Transferencia'
-}[method] || method || 'Sin medio')
-
 const CashRegister = () => {
   const [sessions, setSessions] = useState([])
   const [movements, setMovements] = useState([])
   const [orders, setOrders] = useState([])
   const [cashClosings, setCashClosings] = useState([])
   const [openingAmount, setOpeningAmount] = useState('')
+
+  const [suppliers, setSuppliers] = useState([])
+  const [supplierForm, setSupplierForm] = useState({
+    id: '',
+    name: '',
+    phone: '',
+    rut: '',
+    note: ''
+  })
 
   const [closingAmounts, setClosingAmounts] = useState({
     cash: '',
@@ -52,6 +56,7 @@ const CashRegister = () => {
   const [movement, setMovement] = useState({
     type: 'expense',
     amount: '',
+    supplierId: '',
     description: ''
   })
 
@@ -94,16 +99,99 @@ const CashRegister = () => {
     return data
   }
 
+  const loadSuppliers = () => {
+    const saved = JSON.parse(localStorage.getItem('cashSuppliers') || '[]')
+    setSuppliers(saved)
+  }
+
+  const saveSuppliers = (nextSuppliers) => {
+    setSuppliers(nextSuppliers)
+    localStorage.setItem('cashSuppliers', JSON.stringify(nextSuppliers))
+  }
+
+  const saveSupplier = (event) => {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+
+    if (!supplierForm.name.trim()) {
+      setError('Ingresa el nombre del proveedor')
+      return
+    }
+
+    if (supplierForm.id) {
+      const updated = suppliers.map((supplier) =>
+        supplier.id === supplierForm.id
+          ? {
+              ...supplier,
+              name: supplierForm.name.trim(),
+              phone: supplierForm.phone.trim(),
+              rut: supplierForm.rut.trim(),
+              note: supplierForm.note.trim()
+            }
+          : supplier
+      )
+
+      saveSuppliers(updated)
+      setMessage('Proveedor actualizado correctamente')
+    } else {
+      const newSupplier = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        name: supplierForm.name.trim(),
+        phone: supplierForm.phone.trim(),
+        rut: supplierForm.rut.trim(),
+        note: supplierForm.note.trim(),
+        created_at: new Date().toISOString()
+      }
+
+      saveSuppliers([newSupplier, ...suppliers])
+      setMessage('Proveedor agregado correctamente')
+    }
+
+    setSupplierForm({
+      id: '',
+      name: '',
+      phone: '',
+      rut: '',
+      note: ''
+    })
+  }
+
+  const editSupplier = (supplier) => {
+    setSupplierForm({
+      id: supplier.id,
+      name: supplier.name || '',
+      phone: supplier.phone || '',
+      rut: supplier.rut || '',
+      note: supplier.note || ''
+    })
+  }
+
+  const deleteSupplier = (supplierId) => {
+    const confirmDelete = window.confirm('¿Eliminar este proveedor?')
+    if (!confirmDelete) return
+
+    const updated = suppliers.filter((supplier) => supplier.id !== supplierId)
+    saveSuppliers(updated)
+
+    if (movement.supplierId === supplierId) {
+      setMovement((current) => ({ ...current, supplierId: '' }))
+    }
+
+    setMessage('Proveedor eliminado')
+  }
+
   const loadCash = async () => {
     setLoading(true)
     setError('')
 
     try {
-      const [sessionsResult, movementsResult, ordersResult] = await Promise.allSettled([
-        request('/cash/sessions'),
-        request('/cash/movements'),
-        request('/orders')
-      ])
+      const [sessionsResult, movementsResult, ordersResult] =
+        await Promise.allSettled([
+          request('/cash/sessions'),
+          request('/cash/movements'),
+          request('/orders')
+        ])
 
       if (sessionsResult.status === 'fulfilled') {
         setSessions(getList(sessionsResult.value, ['sessions', 'cash_sessions']))
@@ -119,6 +207,7 @@ const CashRegister = () => {
 
       const savedClosings = JSON.parse(localStorage.getItem('cashClosings') || '[]')
       setCashClosings(savedClosings)
+      loadSuppliers()
     } catch (err) {
       setError(err.message || 'No se pudo cargar caja')
     } finally {
@@ -135,7 +224,11 @@ const CashRegister = () => {
     return status === 'open' || status === 'abierta' || (!session.closed_at && !session.closedAt)
   })
 
-  const sessionStart = activeSession?.opened_at || activeSession?.created_at || activeSession?.createdAt || null
+  const sessionStart =
+    activeSession?.opened_at ||
+    activeSession?.created_at ||
+    activeSession?.createdAt ||
+    null
 
   const sessionOrders = orders.filter((order) => {
     if (!activeSession || !sessionStart) return false
@@ -190,7 +283,13 @@ const CashRegister = () => {
     .filter((item) => ['withdrawal', 'retiro'].includes(String(item.type || '').toLowerCase()))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0)
 
-  const expectedCash = opening + salesByPayment.cash + totalIncome - totalExpenses - totalWithdrawals
+  const expectedCash =
+    opening +
+    salesByPayment.cash +
+    totalIncome -
+    totalExpenses -
+    totalWithdrawals
+
   const expectedDebit = salesByPayment.debit
   const expectedCredit = salesByPayment.credit
   const expectedTransfer = salesByPayment.transfer
@@ -248,18 +347,34 @@ const CashRegister = () => {
         throw new Error('El monto debe ser mayor a 0')
       }
 
+      const selectedSupplier = suppliers.find(
+        (supplier) => supplier.id === movement.supplierId
+      )
+
+      const supplierText = selectedSupplier
+        ? `Proveedor: ${selectedSupplier.name}${selectedSupplier.rut ? ` | RUT: ${selectedSupplier.rut}` : ''}${selectedSupplier.phone ? ` | Tel: ${selectedSupplier.phone}` : ''}`
+        : ''
+
+      const finalDescription = [
+        supplierText,
+        movement.description.trim()
+      ]
+        .filter(Boolean)
+        .join(' - ')
+
       await request('/cash/movements', {
         method: 'POST',
         body: JSON.stringify({
           type: movement.type,
           amount: Number(movement.amount || 0),
-          description: movement.description.trim()
+          description: finalDescription || 'Movimiento sin descripción'
         })
       })
 
       setMovement({
         type: 'expense',
         amount: '',
+        supplierId: '',
         description: ''
       })
 
@@ -617,6 +732,24 @@ const CashRegister = () => {
                   <option value="withdrawal">Retiro</option>
                 </select>
 
+                <select
+                  className="input"
+                  value={movement.supplierId}
+                  onChange={(event) =>
+                    setMovement((current) => ({
+                      ...current,
+                      supplierId: event.target.value
+                    }))
+                  }
+                >
+                  <option value="">Sin proveedor</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </select>
+
                 <input
                   type="number"
                   min="0"
@@ -654,48 +787,160 @@ const CashRegister = () => {
             </div>
 
             <div className="card">
-              <h2 className="text-xl font-bold mb-3">Resumen actual</h2>
+              <h2 className="text-xl font-bold mb-3">
+                {supplierForm.id ? 'Editar proveedor' : 'Agregar proveedor'}
+              </h2>
 
-              <div className="space-y-2">
-                <div className="flex justify-between border-b pb-1">
-                  <span>Inicial</span>
-                  <strong>{money(opening)}</strong>
-                </div>
+              <form onSubmit={saveSupplier} className="space-y-3">
+                <input
+                  className="input"
+                  value={supplierForm.name}
+                  onChange={(event) =>
+                    setSupplierForm({ ...supplierForm, name: event.target.value })
+                  }
+                  placeholder="Nombre proveedor"
+                />
 
-                <div className="flex justify-between border-b pb-1">
-                  <span>Ventas efectivo</span>
-                  <strong>{money(salesByPayment.cash)}</strong>
-                </div>
+                <input
+                  className="input"
+                  value={supplierForm.rut}
+                  onChange={(event) =>
+                    setSupplierForm({ ...supplierForm, rut: event.target.value })
+                  }
+                  placeholder="RUT proveedor"
+                />
 
-                <div className="flex justify-between border-b pb-1">
-                  <span>Ventas débito</span>
-                  <strong>{money(salesByPayment.debit)}</strong>
-                </div>
+                <input
+                  className="input"
+                  value={supplierForm.phone}
+                  onChange={(event) =>
+                    setSupplierForm({ ...supplierForm, phone: event.target.value })
+                  }
+                  placeholder="Teléfono / WhatsApp"
+                />
 
-                <div className="flex justify-between border-b pb-1">
-                  <span>Ventas crédito</span>
-                  <strong>{money(salesByPayment.credit)}</strong>
-                </div>
+                <textarea
+                  className="input min-h-[70px]"
+                  value={supplierForm.note}
+                  onChange={(event) =>
+                    setSupplierForm({ ...supplierForm, note: event.target.value })
+                  }
+                  placeholder="Nota"
+                />
 
-                <div className="flex justify-between border-b pb-1">
-                  <span>Ventas transferencia</span>
-                  <strong>{money(salesByPayment.transfer)}</strong>
-                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg"
+                >
+                  {supplierForm.id ? 'Guardar cambios' : 'Agregar proveedor'}
+                </button>
 
-                <div className="flex justify-between border-b pb-1 text-red-600">
-                  <span>Gastos</span>
-                  <strong>{money(totalExpenses)}</strong>
-                </div>
+                {supplierForm.id && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSupplierForm({
+                        id: '',
+                        name: '',
+                        phone: '',
+                        rut: '',
+                        note: ''
+                      })
+                    }
+                    className="w-full border py-3 rounded-lg"
+                  >
+                    Cancelar edición
+                  </button>
+                )}
+              </form>
 
-                <div className="flex justify-between border-b pb-1 text-red-600">
-                  <span>Retiros</span>
-                  <strong>{money(totalWithdrawals)}</strong>
-                </div>
+              <div className="border-t mt-4 pt-4">
+                <h3 className="font-bold mb-2">Proveedores</h3>
 
-                <div className="flex justify-between text-xl font-bold pt-2">
-                  <span>Esperado</span>
-                  <span>{money(expectedTotal)}</span>
-                </div>
+                {suppliers.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No hay proveedores guardados.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                    {suppliers.map((supplier) => (
+                      <div key={supplier.id} className="border rounded-lg p-3">
+                        <p className="font-bold">{supplier.name}</p>
+                        {supplier.rut && (
+                          <p className="text-sm text-gray-500">RUT: {supplier.rut}</p>
+                        )}
+                        {supplier.phone && (
+                          <p className="text-sm text-gray-500">Tel: {supplier.phone}</p>
+                        )}
+                        {supplier.note && (
+                          <p className="text-sm text-gray-500">{supplier.note}</p>
+                        )}
+
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => editSupplier(supplier)}
+                            className="bg-black text-yellow-400 px-3 py-2 rounded font-bold text-sm"
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteSupplier(supplier.id)}
+                            className="bg-red-600 text-white px-3 py-2 rounded font-bold text-sm"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="text-xl font-bold mb-3">Resumen actual</h2>
+
+            <div className="space-y-2">
+              <div className="flex justify-between border-b pb-1">
+                <span>Inicial</span>
+                <strong>{money(opening)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1">
+                <span>Ventas efectivo</span>
+                <strong>{money(salesByPayment.cash)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1">
+                <span>Ventas débito</span>
+                <strong>{money(salesByPayment.debit)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1">
+                <span>Ventas crédito</span>
+                <strong>{money(salesByPayment.credit)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1">
+                <span>Ventas transferencia</span>
+                <strong>{money(salesByPayment.transfer)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1 text-red-600">
+                <span>Gastos</span>
+                <strong>{money(totalExpenses)}</strong>
+              </div>
+
+              <div className="flex justify-between border-b pb-1 text-red-600">
+                <span>Retiros</span>
+                <strong>{money(totalWithdrawals)}</strong>
+              </div>
+
+              <div className="flex justify-between text-xl font-bold pt-2">
+                <span>Esperado</span>
+                <span>{money(expectedTotal)}</span>
               </div>
             </div>
           </div>
@@ -734,11 +979,21 @@ const CashRegister = () => {
                   <tbody>
                     {cashClosings.map((closing) => (
                       <tr key={closing.id} className="border-b">
-                        <td className="py-3">{new Date(closing.date).toLocaleString('es-CL')}</td>
+                        <td className="py-3">
+                          {new Date(closing.date).toLocaleString('es-CL')}
+                        </td>
                         <td>{money(closing.total_sales)}</td>
                         <td>{money(closing.expected_total)}</td>
                         <td>{money(closing.real_total)}</td>
-                        <td className={closing.difference < 0 ? 'text-red-600 font-bold' : closing.difference > 0 ? 'text-green-600 font-bold' : 'font-bold'}>
+                        <td
+                          className={
+                            closing.difference < 0
+                              ? 'text-red-600 font-bold'
+                              : closing.difference > 0
+                                ? 'text-green-600 font-bold'
+                                : 'font-bold'
+                          }
+                        >
                           {money(closing.difference)}
                         </td>
                         <td className="text-right">
@@ -763,7 +1018,9 @@ const CashRegister = () => {
             {loading ? (
               <div className="text-center py-8 text-gray-500">Cargando caja...</div>
             ) : sessionMovements.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No hay movimientos registrados.</div>
+              <div className="text-center py-8 text-gray-500">
+                No hay movimientos registrados.
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -779,7 +1036,9 @@ const CashRegister = () => {
                   <tbody>
                     {sessionMovements.map((item) => (
                       <tr key={item.id} className="border-b">
-                        <td className="py-3">{new Date(item.created_at || Date.now()).toLocaleString('es-CL')}</td>
+                        <td className="py-3">
+                          {new Date(item.created_at || Date.now()).toLocaleString('es-CL')}
+                        </td>
                         <td>{item.type}</td>
                         <td>{item.description || item.notes || 'Sin descripción'}</td>
                         <td className="text-right font-bold">{money(item.amount)}</td>
