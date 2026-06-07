@@ -29,6 +29,8 @@ const Inventory = () => {
   const [activeTab, setActiveTab] = useState('inventario')
   const [items, setItems] = useState([])
   const [movements, setMovements] = useState([])
+  const [orders, setOrders] = useState([])
+  const [products, setProducts] = useState([])
 
   const [form, setForm] = useState({
     name: '',
@@ -88,23 +90,32 @@ const Inventory = () => {
     setError('')
 
     try {
-      const [inventoryResult, movementsResult] = await Promise.allSettled([
+      const [
+        inventoryResult,
+        movementsResult,
+        ordersResult,
+        productsResult
+      ] = await Promise.allSettled([
         request('/inventory'),
-        request('/inventory/movements')
+        request('/inventory/movements'),
+        request('/orders'),
+        request('/products')
       ])
 
       if (inventoryResult.status === 'fulfilled') {
-        const list = getList(inventoryResult.value, [
-          'inventory',
-          'items',
-          'products'
-        ])
-        setItems(list)
+        setItems(getList(inventoryResult.value, ['inventory', 'items', 'products']))
       }
 
       if (movementsResult.status === 'fulfilled') {
-        const list = getList(movementsResult.value, ['movements'])
-        setMovements(list)
+        setMovements(getList(movementsResult.value, ['movements']))
+      }
+
+      if (ordersResult.status === 'fulfilled') {
+        setOrders(getList(ordersResult.value, ['orders']))
+      }
+
+      if (productsResult.status === 'fulfilled') {
+        setProducts(getList(productsResult.value, ['products']))
       }
     } catch (err) {
       setError(err.message || 'No se pudo cargar inventario')
@@ -135,71 +146,60 @@ const Inventory = () => {
   const soldStockSummary = useMemo(() => {
     const summary = {}
 
-    movements.forEach((movementItem) => {
-      const type = String(movementItem.type || '').toLowerCase()
+    orders.forEach((order) => {
+      const orderItems = order.items || order.order_items || []
 
-      const isSaleDiscount =
-        type === 'sale' ||
-        type === 'sale_edit_discount' ||
-        type === 'venta' ||
-        type === 'descuento_venta'
+      orderItems.forEach((orderItem) => {
+        const productId = orderItem.product_id
 
-      const isSaleRestore =
-        type === 'sale_edit_restore' ||
-        type === 'restore' ||
-        type === 'devolucion_venta'
+        if (!productId) return
 
-      if (!isSaleDiscount && !isSaleRestore) return
+        const product = products.find((item) => item.id === productId)
 
-      const inventory =
-        movementItem.inventory ||
-        movementItem.item ||
-        movementItem.inventory_item ||
-        {}
+        if (!product || !Array.isArray(product.recipe)) return
 
-      const itemId =
-        movementItem.item_id ||
-        movementItem.inventory_item_id ||
-        inventory.id ||
-        'sin-id'
+        product.recipe.forEach((recipeItem) => {
+          const inventoryId = recipeItem.inventory_item_id
+          const inventory = recipeItem.inventory || {}
 
-      const name =
-        inventory.name ||
-        movementItem.name ||
-        movementItem.item_name ||
-        'Insumo sin nombre'
+          if (!inventoryId) return
 
-      const unit = inventory.unit || movementItem.unit || 'unid.'
+          const ingredientName =
+            inventory.name ||
+            items.find((item) => item.id === inventoryId)?.name ||
+            'Ingrediente sin nombre'
 
-      const quantity = Number(movementItem.quantity || 0)
+          const unit =
+            inventory.unit ||
+            recipeItem.unit ||
+            items.find((item) => item.id === inventoryId)?.unit ||
+            'unid.'
 
-      if (!summary[itemId]) {
-        summary[itemId] = {
-          id: itemId,
-          name,
-          unit,
-          sold: 0,
-          restored: 0,
-          net: 0
-        }
-      }
+          const quantitySold =
+            Number(recipeItem.quantity || 0) *
+            Number(orderItem.quantity || 1)
 
-      if (isSaleDiscount) {
-        summary[itemId].sold += quantity
-      }
+          if (quantitySold <= 0) return
 
-      if (isSaleRestore) {
-        summary[itemId].restored += quantity
-      }
+          if (!summary[inventoryId]) {
+            summary[inventoryId] = {
+              id: inventoryId,
+              name: ingredientName,
+              unit,
+              sold: 0
+            }
+          }
 
-      summary[itemId].net = summary[itemId].sold - summary[itemId].restored
+          summary[inventoryId].sold += quantitySold
+        })
+      })
     })
 
-    return Object.values(summary).sort((a, b) => b.net - a.net)
-  }, [movements])
+    return Object.values(summary).sort((a, b) => b.sold - a.sold)
+  }, [orders, products, items])
 
   const totalSoldIngredients = soldStockSummary.reduce(
-    (sum, item) => sum + Number(item.net || 0),
+    (sum, item) => sum + Number(item.sold || 0),
     0
   )
 
@@ -481,16 +481,10 @@ const Inventory = () => {
 
                           return (
                             <tr key={item.id} className="border-b">
-                              <td className="py-3 font-semibold">
-                                {item.name}
-                              </td>
-
+                              <td className="py-3 font-semibold">{item.name}</td>
                               <td>{stock}</td>
-
                               <td>{minStock}</td>
-
                               <td>{item.unit || 'unid.'}</td>
-
                               <td
                                 className={`font-bold ${
                                   isCritical ? 'text-red-600' : 'text-green-600'
@@ -528,8 +522,7 @@ const Inventory = () => {
                     <option value="">Selecciona insumo</option>
                     {items.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.name} ({item.stock || item.current_stock || 0}{' '}
-                        {item.unit})
+                        {item.name} ({item.stock || item.current_stock || 0} {item.unit})
                       </option>
                     ))}
                   </select>
@@ -613,7 +606,9 @@ const Inventory = () => {
                         {movements.map((item) => (
                           <tr key={item.id} className="border-b">
                             <td className="py-3">
-                              {new Date(item.created_at).toLocaleString('es-CL')}
+                              {item.created_at
+                                ? new Date(item.created_at).toLocaleString('es-CL')
+                                : ''}
                             </td>
                             <td>{item.inventory?.name || 'Sin insumo'}</td>
                             <td>{item.type}</td>
@@ -642,7 +637,7 @@ const Inventory = () => {
                 </div>
 
                 <div className="card">
-                  <p className="text-gray-500">Total unidades descontadas</p>
+                  <p className="text-gray-500">Total descontado por recetas</p>
                   <h2 className="text-3xl font-bold text-red-600">
                     {totalSoldIngredients}
                   </h2>
@@ -650,7 +645,7 @@ const Inventory = () => {
 
                 <div className="card">
                   <p className="text-gray-500">Origen</p>
-                  <h2 className="text-xl font-bold">Ventas POS</h2>
+                  <h2 className="text-xl font-bold">Ventas + Recetas</h2>
                 </div>
               </div>
 
@@ -661,8 +656,7 @@ const Inventory = () => {
                       Movimiento de Stock por ventas
                     </h2>
                     <p className="text-gray-600">
-                      Aquí ves cuántos ingredientes se han descontado por ventas:
-                      carne, pan, tocino, queso, bebidas, papas, etc.
+                      Cálculo directo desde ventas y recetas de productos.
                     </p>
                   </div>
 
@@ -677,7 +671,7 @@ const Inventory = () => {
 
                 {soldStockSummary.length === 0 ? (
                   <div className="text-center text-gray-500 py-10">
-                    Aún no hay movimientos de stock por ventas.
+                    No hay recetas asociadas a las ventas registradas.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -686,9 +680,7 @@ const Inventory = () => {
                         <tr className="border-b text-gray-500">
                           <th className="py-3">Ingrediente</th>
                           <th>Unidad</th>
-                          <th>Descontado por ventas</th>
-                          <th>Devuelto por edición</th>
-                          <th>Total neto vendido</th>
+                          <th>Total usado por ventas</th>
                         </tr>
                       </thead>
 
@@ -699,12 +691,6 @@ const Inventory = () => {
                             <td>{item.unit}</td>
                             <td className="text-red-600 font-bold">
                               {item.sold} {item.unit}
-                            </td>
-                            <td className="text-green-600 font-bold">
-                              {item.restored} {item.unit}
-                            </td>
-                            <td className="font-bold">
-                              {item.net} {item.unit}
                             </td>
                           </tr>
                         ))}
