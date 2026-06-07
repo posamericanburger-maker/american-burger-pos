@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import Sidebar from '../components/Sidebar'
@@ -37,6 +37,14 @@ const Dashboard = () => {
   const [products, setProducts] = useState([])
   const [cashSessions, setCashSessions] = useState([])
   const [selectedOrder, setSelectedOrder] = useState(null)
+
+  const [editingOrder, setEditingOrder] = useState(null)
+  const [editItems, setEditItems] = useState([])
+  const [editNotes, setEditNotes] = useState('')
+  const [editPaymentMethod, setEditPaymentMethod] = useState('cash')
+  const [editProductSearch, setEditProductSearch] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
@@ -137,6 +145,153 @@ const Dashboard = () => {
   const avgTicket =
     todayOrders.length > 0 ? salesToday / todayOrders.length : 0
 
+  const canEditOrder = (order) => {
+    if (!activeCash || !cashOpenDate) return false
+    const orderDate = new Date(order.created_at)
+    return orderDate >= cashOpenDate
+  }
+
+  const openEditOrder = (order) => {
+    if (!canEditOrder(order)) {
+      alert('No puedes editar esta venta. Solo se editan ventas de la caja abierta actual.')
+      return
+    }
+
+    setEditingOrder(order)
+    setEditNotes(order.notes || '')
+    setEditPaymentMethod(order.payment_method || 'cash')
+    setEditProductSearch('')
+
+    setEditItems(
+      (order.items || []).map((item) => ({
+        row_id: item.id || `${item.product_id}-${Date.now()}`,
+        product_id: item.product_id || null,
+        name: item.name || item.product_name || item.name_snapshot || 'Producto',
+        category_name: item.category_name || 'Sin categoría',
+        quantity: Number(item.quantity || 1),
+        price: Number(item.unit_price || item.price || 0)
+      }))
+    )
+  }
+
+  const closeEditModal = () => {
+    setEditingOrder(null)
+    setEditItems([])
+    setEditNotes('')
+    setEditPaymentMethod('cash')
+    setEditProductSearch('')
+  }
+
+  const editSubtotal = useMemo(() => {
+    return editItems.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0
+    )
+  }, [editItems])
+
+  const editDeliveryFee = Number(editingOrder?.delivery_fee || 0)
+  const editTotal = editSubtotal + editDeliveryFee
+
+  const filteredEditProducts = products.filter((product) => {
+    const text = `${product.name || ''} ${product.description || ''}`.toLowerCase()
+    return text.includes(editProductSearch.toLowerCase())
+  })
+
+  const updateEditQuantity = (rowId, quantity) => {
+    const nextQuantity = Number(quantity)
+
+    if (nextQuantity <= 0) {
+      setEditItems((current) => current.filter((item) => item.row_id !== rowId))
+      return
+    }
+
+    setEditItems((current) =>
+      current.map((item) =>
+        item.row_id === rowId
+          ? { ...item, quantity: nextQuantity }
+          : item
+      )
+    )
+  }
+
+  const removeEditItem = (rowId) => {
+    setEditItems((current) => current.filter((item) => item.row_id !== rowId))
+  }
+
+  const addProductToEdit = (product) => {
+    setEditItems((current) => {
+      const exists = current.find((item) => item.product_id === product.id)
+
+      if (exists) {
+        return current.map((item) =>
+          item.product_id === product.id
+            ? { ...item, quantity: Number(item.quantity || 1) + 1 }
+            : item
+        )
+      }
+
+      return [
+        ...current,
+        {
+          row_id: `${product.id}-${Date.now()}`,
+          product_id: product.id,
+          name: product.name,
+          category_name: product.category?.name || product.category_name || 'Sin categoría',
+          quantity: 1,
+          price: Number(product.price || 0)
+        }
+      ]
+    })
+  }
+
+  const saveEditedOrder = async () => {
+    setSavingEdit(true)
+    setError('')
+    setMessage('')
+
+    try {
+      if (!editingOrder) throw new Error('No hay venta seleccionada')
+
+      if (!canEditOrder(editingOrder)) {
+        throw new Error('No puedes editar ventas de una caja cerrada o anterior')
+      }
+
+      if (editItems.length === 0) {
+        throw new Error('La venta debe tener al menos un producto')
+      }
+
+      const cleanItems = editItems.map((item) => ({
+        product_id: item.product_id,
+        name: item.name,
+        product_name: item.name,
+        name_snapshot: item.name,
+        category_name: item.category_name || 'Sin categoría',
+        quantity: Number(item.quantity || 1),
+        unit_price: Number(item.price || 0),
+        price: Number(item.price || 0),
+        subtotal: Number(item.price || 0) * Number(item.quantity || 1)
+      }))
+
+      const data = await request(`/orders/${editingOrder.id}/edit`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          items: cleanItems,
+          notes: editNotes,
+          payment_method: editPaymentMethod
+        })
+      })
+
+      setMessage(data.message || 'Venta editada correctamente')
+      closeEditModal()
+      setSelectedOrder(null)
+      await loadDashboard()
+    } catch (err) {
+      setError(err.message || 'No se pudo editar la venta')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const exportExcel = () => {
     const detalleVentas = []
 
@@ -215,7 +370,6 @@ const Dashboard = () => {
           <title>Recibo Cliente</title>
           <style>
             @page { size: 80mm auto; margin: 0; }
-
             body {
               width: 80mm;
               margin: 0;
@@ -225,12 +379,10 @@ const Dashboard = () => {
               color: #000;
               background: #fff;
             }
-
             .center { text-align: center; }
             .brand { font-size: 22px; font-weight: 900; margin: 0; }
             .small { font-size: 11px; }
             .line { border-top: 1px dashed #000; margin: 8px 0; }
-
             .row,
             .product {
               display: flex;
@@ -238,73 +390,29 @@ const Dashboard = () => {
               gap: 8px;
               margin: 6px 0;
             }
-
-            .right {
-              text-align: right;
-              white-space: nowrap;
-            }
-
-            .total {
-              font-size: 18px;
-              font-weight: 900;
-            }
-
-            .thanks {
-              font-size: 12px;
-              margin-top: 10px;
-              text-align: center;
-            }
+            .right { text-align: right; white-space: nowrap; }
+            .total { font-size: 18px; font-weight: 900; }
+            .thanks { font-size: 12px; margin-top: 10px; text-align: center; }
           </style>
         </head>
-
         <body>
           <div class="center">
             <h1 class="brand">AMERICAN BURGER</h1>
             <div>ARICA - CHILE</div>
             <div class="small">RECIBO DE COMPRA</div>
           </div>
-
           <div class="line"></div>
-
-          <div class="row">
-            <span>Fecha</span>
-            <span>${new Date(order.created_at).toLocaleDateString('es-CL')}</span>
-          </div>
-
-          <div class="row">
-            <span>Hora</span>
-            <span>${new Date(order.created_at).toLocaleTimeString('es-CL')}</span>
-          </div>
-
-          <div class="row">
-            <span>Tipo</span>
-            <span>${typeLabel(order.order_type || order.type)}</span>
-          </div>
-
-          <div class="row">
-            <span>Pago</span>
-            <span>${paymentLabel(order.payment_method)}</span>
-          </div>
-
+          <div class="row"><span>Fecha</span><span>${new Date(order.created_at).toLocaleDateString('es-CL')}</span></div>
+          <div class="row"><span>Hora</span><span>${new Date(order.created_at).toLocaleTimeString('es-CL')}</span></div>
+          <div class="row"><span>Tipo</span><span>${typeLabel(order.order_type || order.type)}</span></div>
+          <div class="row"><span>Pago</span><span>${paymentLabel(order.payment_method)}</span></div>
           <div class="line"></div>
-
           ${productLines}
-
           <div class="line"></div>
-
-          <div class="row total">
-            <span>TOTAL</span>
-            <span>${money(total)}</span>
-          </div>
-
+          <div class="row total"><span>TOTAL</span><span>${money(total)}</span></div>
           <div class="center small">Precios con IVA incluido</div>
-
           <div class="line"></div>
-
-          <div class="thanks">
-            Gracias por tu compra<br />
-            🍔 American Burger 🍔
-          </div>
+          <div class="thanks">Gracias por tu compra<br />🍔 American Burger 🍔</div>
         </body>
       </html>
     `
@@ -454,14 +562,10 @@ Gracias por preferir American Burger 🍔`)
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl shadow-md p-6">
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <h2 className="text-2xl font-black">Ventas por canal</h2>
-                  <p className="text-gray-500">
-                    Mostrador y delivery de la caja abierta.
-                  </p>
-                </div>
-              </div>
+              <h2 className="text-2xl font-black">Ventas por canal</h2>
+              <p className="text-gray-500 mb-5">
+                Mostrador y delivery de la caja abierta.
+              </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(salesByType).length === 0 ? (
@@ -471,16 +575,9 @@ Gracias por preferir American Burger 🍔`)
                   </div>
                 ) : (
                   Object.entries(salesByType).map(([type, total]) => (
-                    <div
-                      key={type}
-                      className="border rounded-xl p-5 bg-gray-50"
-                    >
-                      <p className="text-gray-500 font-bold">
-                        {typeLabel(type)}
-                      </p>
-                      <h3 className="text-3xl font-black mt-2">
-                        {money(total)}
-                      </h3>
+                    <div key={type} className="border rounded-xl p-5 bg-gray-50">
+                      <p className="text-gray-500 font-bold">{typeLabel(type)}</p>
+                      <h3 className="text-3xl font-black mt-2">{money(total)}</h3>
                     </div>
                   ))
                 )}
@@ -488,14 +585,10 @@ Gracias por preferir American Burger 🍔`)
             </div>
 
             <div className="bg-white rounded-2xl shadow-md p-6">
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <h2 className="text-2xl font-black">Medios de pago</h2>
-                  <p className="text-gray-500">
-                    Distribución de ventas por forma de pago.
-                  </p>
-                </div>
-              </div>
+              <h2 className="text-2xl font-black">Medios de pago</h2>
+              <p className="text-gray-500 mb-5">
+                Distribución de ventas por forma de pago.
+              </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(salesByPayment).length === 0 ? (
@@ -505,16 +598,11 @@ Gracias por preferir American Burger 🍔`)
                   </div>
                 ) : (
                   Object.entries(salesByPayment).map(([method, total]) => (
-                    <div
-                      key={method}
-                      className="border rounded-xl p-5 bg-gray-50"
-                    >
+                    <div key={method} className="border rounded-xl p-5 bg-gray-50">
                       <p className="text-gray-500 font-bold">
                         {paymentLabel(method)}
                       </p>
-                      <h3 className="text-3xl font-black mt-2">
-                        {money(total)}
-                      </h3>
+                      <h3 className="text-3xl font-black mt-2">{money(total)}</h3>
                     </div>
                   ))
                 )}
@@ -527,7 +615,7 @@ Gracias por preferir American Burger 🍔`)
               <div>
                 <h2 className="text-2xl font-black">Registro de ventas</h2>
                 <p className="text-gray-500">
-                  Historial completo de ventas. Puedes ver, imprimir o reenviar por WhatsApp.
+                  Puedes editar solo ventas de la caja abierta actual.
                 </p>
               </div>
 
@@ -572,6 +660,7 @@ Gracias por preferir American Burger 🍔`)
                       const date = new Date(order.created_at)
                       const items = order.items || []
                       const total = Number(order.total || order.total_amount || 0)
+                      const editable = canEditOrder(order)
 
                       return (
                         <tr key={order.id} className="border-b hover:bg-yellow-50">
@@ -589,15 +678,9 @@ Gracias por preferir American Burger 🍔`)
                             </span>
                           </td>
 
-                          <td className="px-4">
-                            {paymentLabel(order.payment_method)}
-                          </td>
-
+                          <td className="px-4">{paymentLabel(order.payment_method)}</td>
                           <td className="px-4">{items.length}</td>
-
-                          <td className="px-4 font-black">
-                            {money(total)}
-                          </td>
+                          <td className="px-4 font-black">{money(total)}</td>
 
                           <td className="px-4 text-right">
                             <div className="flex justify-end gap-2 flex-wrap">
@@ -606,6 +689,14 @@ Gracias por preferir American Burger 🍔`)
                                 className="bg-yellow-400 text-black px-3 py-2 rounded-lg font-bold"
                               >
                                 Ver
+                              </button>
+
+                              <button
+                                onClick={() => openEditOrder(order)}
+                                disabled={!editable}
+                                className="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold disabled:opacity-40"
+                              >
+                                Editar
                               </button>
 
                               <button
@@ -705,20 +796,10 @@ Gracias por preferir American Burger 🍔`)
                         <td className="py-4 px-4 font-bold">
                           {item.name || item.product_name || item.name_snapshot}
                         </td>
-
-                        <td className="px-4">
-                          {item.category_name || 'Sin categoría'}
-                        </td>
-
+                        <td className="px-4">{item.category_name || 'Sin categoría'}</td>
                         <td className="px-4">{item.quantity}</td>
-
-                        <td className="px-4">
-                          {money(item.unit_price || item.price || 0)}
-                        </td>
-
-                        <td className="px-4 font-bold">
-                          {money(item.subtotal || 0)}
-                        </td>
+                        <td className="px-4">{money(item.unit_price || item.price || 0)}</td>
+                        <td className="px-4 font-bold">{money(item.subtotal || 0)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -733,6 +814,18 @@ Gracias por preferir American Burger 🍔`)
               )}
 
               <div className="flex justify-end gap-3 flex-wrap">
+                {canEditOrder(selectedOrder) && (
+                  <button
+                    onClick={() => {
+                      setSelectedOrder(null)
+                      openEditOrder(selectedOrder)
+                    }}
+                    className="bg-blue-600 text-white px-5 py-3 rounded-xl font-bold"
+                  >
+                    Editar venta
+                  </button>
+                )}
+
                 <button
                   onClick={() => sendOrderWhatsApp(selectedOrder)}
                   className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-bold"
@@ -746,6 +839,200 @@ Gracias por preferir American Burger 🍔`)
                 >
                   Imprimir recibo
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editingOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[92vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-start mb-5">
+                <div>
+                  <h2 className="text-3xl font-black">Editar venta</h2>
+                  <p className="text-gray-500">
+                    El inventario se ajustará automáticamente al guardar.
+                  </p>
+                </div>
+
+                <button
+                  onClick={closeEditModal}
+                  className="bg-red-600 text-white px-4 py-2 rounded-xl font-bold"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 space-y-5">
+                  <div className="border rounded-2xl p-5">
+                    <h3 className="text-2xl font-black mb-4">Productos de la venta</h3>
+
+                    {editItems.length === 0 ? (
+                      <div className="text-center text-gray-500 py-8 border rounded-xl">
+                        No hay productos en la venta.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {editItems.map((item) => (
+                          <div key={item.row_id} className="border rounded-xl p-4 bg-gray-50">
+                            <div className="flex justify-between gap-3">
+                              <div>
+                                <h4 className="font-black">{item.name}</h4>
+                                <p className="text-sm text-gray-500">
+                                  {item.category_name || 'Sin categoría'}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => removeEditItem(item.row_id)}
+                                className="bg-red-600 text-white px-3 py-2 rounded-lg font-bold h-fit"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                              <div>
+                                <label className="label">Cantidad</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  className="input"
+                                  value={item.quantity}
+                                  onChange={(event) =>
+                                    updateEditQuantity(item.row_id, event.target.value)
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <label className="label">Precio</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  className="input"
+                                  value={item.price}
+                                  onChange={(event) =>
+                                    setEditItems((current) =>
+                                      current.map((row) =>
+                                        row.row_id === item.row_id
+                                          ? { ...row, price: Number(event.target.value || 0) }
+                                          : row
+                                      )
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <label className="label">Subtotal</label>
+                                <div className="border rounded-lg px-4 py-2 font-black bg-white">
+                                  {money(Number(item.price || 0) * Number(item.quantity || 0))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border rounded-2xl p-5">
+                    <h3 className="text-2xl font-black mb-4">Agregar producto</h3>
+
+                    <input
+                      className="input mb-4"
+                      value={editProductSearch}
+                      onChange={(event) => setEditProductSearch(event.target.value)}
+                      placeholder="Buscar producto para agregar..."
+                    />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto">
+                      {filteredEditProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => addProductToEdit(product)}
+                          className="border rounded-xl p-4 text-left hover:bg-yellow-50 hover:border-yellow-400"
+                        >
+                          <p className="font-black">{product.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {product.category?.name || product.category_name || 'Sin categoría'}
+                          </p>
+                          <p className="font-black mt-2">{money(product.price)}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border rounded-2xl p-5 h-fit bg-gray-50">
+                  <h3 className="text-2xl font-black mb-4">Resumen</h3>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="label">Medio de pago</label>
+                      <select
+                        className="input"
+                        value={editPaymentMethod}
+                        onChange={(event) => setEditPaymentMethod(event.target.value)}
+                      >
+                        <option value="cash">Efectivo</option>
+                        <option value="debit">Débito</option>
+                        <option value="credit">Crédito</option>
+                        <option value="transfer">Transferencia</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="label">Notas</label>
+                      <textarea
+                        className="input min-h-[90px]"
+                        value={editNotes}
+                        onChange={(event) => setEditNotes(event.target.value)}
+                        placeholder="Notas de la venta"
+                      />
+                    </div>
+
+                    <div className="border rounded-xl p-4 bg-white space-y-2">
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <strong>{money(editSubtotal)}</strong>
+                      </div>
+
+                      {editDeliveryFee > 0 && (
+                        <div className="flex justify-between">
+                          <span>Delivery</span>
+                          <strong>{money(editDeliveryFee)}</strong>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between text-3xl font-black border-t pt-3">
+                        <span>Total</span>
+                        <span>{money(editTotal)}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={saveEditedOrder}
+                      disabled={savingEdit || editItems.length === 0}
+                      className="w-full bg-black text-yellow-400 font-black py-4 rounded-xl disabled:opacity-50"
+                    >
+                      {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={closeEditModal}
+                      className="w-full border py-3 rounded-xl bg-white"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
