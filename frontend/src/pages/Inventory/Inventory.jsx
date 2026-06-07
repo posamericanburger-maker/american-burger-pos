@@ -14,14 +14,11 @@ const getToken = () =>
 
 const getList = (data, keys = []) => {
   if (Array.isArray(data)) return data
-
   for (const key of keys) {
     if (Array.isArray(data?.[key])) return data[key]
   }
-
   if (Array.isArray(data?.data)) return data.data
   if (Array.isArray(data?.items)) return data.items
-
   return []
 }
 
@@ -31,6 +28,8 @@ const Inventory = () => {
   const [movements, setMovements] = useState([])
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
+
+  const [editingId, setEditingId] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -53,7 +52,6 @@ const Inventory = () => {
 
   const headers = useMemo(() => {
     const token = getToken()
-
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -90,17 +88,13 @@ const Inventory = () => {
     setError('')
 
     try {
-      const [
-        inventoryResult,
-        movementsResult,
-        ordersResult,
-        productsResult
-      ] = await Promise.allSettled([
-        request('/inventory'),
-        request('/inventory/movements'),
-        request('/orders'),
-        request('/products')
-      ])
+      const [inventoryResult, movementsResult, ordersResult, productsResult] =
+        await Promise.allSettled([
+          request('/inventory'),
+          request('/inventory/movements'),
+          request('/orders'),
+          request('/products')
+        ])
 
       if (inventoryResult.status === 'fulfilled') {
         setItems(getList(inventoryResult.value, ['inventory', 'items', 'products']))
@@ -128,6 +122,137 @@ const Inventory = () => {
     loadInventory()
   }, [])
 
+  const resetForm = () => {
+    setEditingId(null)
+    setForm({
+      name: '',
+      stock: '',
+      min_stock: '',
+      unit: 'unid.'
+    })
+  }
+
+  const startEditItem = (item) => {
+    setEditingId(item.id)
+    setForm({
+      name: item.name || '',
+      stock: item.stock || item.current_stock || 0,
+      min_stock: item.min_stock || item.minimum_stock || 0,
+      unit: item.unit || 'unid.'
+    })
+
+    setActiveTab('inventario')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const saveItem = async (event) => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setMessage('')
+
+    try {
+      if (!form.name.trim()) {
+        throw new Error('El nombre del insumo es obligatorio')
+      }
+
+      const payload = {
+        name: form.name.trim(),
+        stock: Number(form.stock || 0),
+        current_stock: Number(form.stock || 0),
+        min_stock: Number(form.min_stock || 0),
+        minimum_stock: Number(form.min_stock || 0),
+        unit: form.unit
+      }
+
+      if (editingId) {
+        await request(`/inventory/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        })
+
+        setMessage('Insumo actualizado correctamente')
+      } else {
+        await request('/inventory', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
+
+        setMessage('Insumo creado correctamente')
+      }
+
+      resetForm()
+      await loadInventory()
+    } catch (err) {
+      setError(err.message || 'No se pudo guardar insumo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const deleteItem = async (item) => {
+    const confirmDelete = window.confirm(`¿Eliminar el insumo "${item.name}"?`)
+    if (!confirmDelete) return
+
+    setSaving(true)
+    setError('')
+    setMessage('')
+
+    try {
+      await request(`/inventory/${item.id}`, {
+        method: 'DELETE'
+      })
+
+      setMessage('Insumo eliminado correctamente')
+      await loadInventory()
+    } catch (err) {
+      setError(err.message || 'No se pudo eliminar insumo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveMovement = async (event) => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setMessage('')
+
+    try {
+      if (!movement.item_id) {
+        throw new Error('Selecciona un insumo')
+      }
+
+      if (!movement.quantity || Number(movement.quantity) <= 0) {
+        throw new Error('La cantidad debe ser mayor a 0')
+      }
+
+      await request('/inventory/movement', {
+        method: 'POST',
+        body: JSON.stringify({
+          item_id: movement.item_id,
+          type: movement.type,
+          quantity: Number(movement.quantity),
+          description: movement.description.trim()
+        })
+      })
+
+      setMovement({
+        item_id: '',
+        type: 'in',
+        quantity: '',
+        description: ''
+      })
+
+      setMessage('Movimiento registrado correctamente')
+      await loadInventory()
+    } catch (err) {
+      setError(err.message || 'No se pudo registrar movimiento')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const totalStock = items.reduce(
     (sum, item) =>
       sum + Number(item.stock || item.current_stock || item.quantity || 0),
@@ -137,7 +262,6 @@ const Inventory = () => {
   const criticalItems = items.filter((item) => {
     const stock = Number(item.stock || item.current_stock || item.quantity || 0)
     const minStock = Number(item.min_stock || item.minimum_stock || 0)
-
     return stock <= minStock
   })
 
@@ -151,11 +275,9 @@ const Inventory = () => {
 
       orderItems.forEach((orderItem) => {
         const productId = orderItem.product_id
-
         if (!productId) return
 
         const product = products.find((item) => item.id === productId)
-
         if (!product || !Array.isArray(product.recipe)) return
 
         product.recipe.forEach((recipeItem) => {
@@ -202,86 +324,6 @@ const Inventory = () => {
     (sum, item) => sum + Number(item.sold || 0),
     0
   )
-
-  const createItem = async (event) => {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    setMessage('')
-
-    try {
-      if (!form.name.trim()) {
-        throw new Error('El nombre del insumo es obligatorio')
-      }
-
-      await request('/inventory', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name.trim(),
-          stock: Number(form.stock || 0),
-          current_stock: Number(form.stock || 0),
-          min_stock: Number(form.min_stock || 0),
-          minimum_stock: Number(form.min_stock || 0),
-          unit: form.unit
-        })
-      })
-
-      setForm({
-        name: '',
-        stock: '',
-        min_stock: '',
-        unit: 'unid.'
-      })
-
-      setMessage('Insumo creado correctamente')
-      await loadInventory()
-    } catch (err) {
-      setError(err.message || 'No se pudo crear insumo')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveMovement = async (event) => {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    setMessage('')
-
-    try {
-      if (!movement.item_id) {
-        throw new Error('Selecciona un insumo')
-      }
-
-      if (!movement.quantity || Number(movement.quantity) <= 0) {
-        throw new Error('La cantidad debe ser mayor a 0')
-      }
-
-      await request('/inventory/movement', {
-        method: 'POST',
-        body: JSON.stringify({
-          item_id: movement.item_id,
-          type: movement.type,
-          quantity: Number(movement.quantity),
-          description: movement.description.trim()
-        })
-      })
-
-      setMovement({
-        item_id: '',
-        type: 'in',
-        quantity: '',
-        description: ''
-      })
-
-      setMessage('Movimiento registrado correctamente')
-      await loadInventory()
-    } catch (err) {
-      setError(err.message || 'No se pudo registrar movimiento')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const tabs = [
     { id: 'inventario', label: 'Inventario', icon: '📦' },
@@ -362,9 +404,11 @@ const Inventory = () => {
           {activeTab === 'inventario' && (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               <div className="card">
-                <h2 className="text-2xl font-bold mb-4">Nuevo insumo</h2>
+                <h2 className="text-2xl font-bold mb-4">
+                  {editingId ? 'Editar insumo' : 'Nuevo insumo'}
+                </h2>
 
-                <form onSubmit={createItem} className="space-y-4">
+                <form onSubmit={saveItem} className="space-y-4">
                   <input
                     className="input"
                     value={form.name}
@@ -387,7 +431,7 @@ const Inventory = () => {
                         stock: event.target.value
                       }))
                     }
-                    placeholder="Stock inicial"
+                    placeholder="Stock actual"
                   />
 
                   <input
@@ -428,8 +472,22 @@ const Inventory = () => {
                     disabled={saving}
                     className="w-full bg-black text-yellow-400 font-bold py-3 rounded-lg disabled:opacity-50"
                   >
-                    Crear insumo
+                    {saving
+                      ? 'Guardando...'
+                      : editingId
+                        ? 'Guardar cambios'
+                        : 'Crear insumo'}
                   </button>
+
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={resetForm}
+                      className="w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-100"
+                    >
+                      Cancelar edición
+                    </button>
+                  )}
                 </form>
               </div>
 
@@ -466,6 +524,7 @@ const Inventory = () => {
                           <th>Stock mínimo</th>
                           <th>Unidad</th>
                           <th>Estado</th>
+                          <th className="text-right">Acciones</th>
                         </tr>
                       </thead>
 
@@ -491,6 +550,25 @@ const Inventory = () => {
                                 }`}
                               >
                                 {isCritical ? 'Crítico' : 'OK'}
+                              </td>
+                              <td className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditItem(item)}
+                                    className="bg-yellow-400 text-black px-3 py-2 rounded font-bold"
+                                  >
+                                    Editar
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteItem(item)}
+                                    className="bg-red-600 text-white px-3 py-2 rounded font-bold"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           )
