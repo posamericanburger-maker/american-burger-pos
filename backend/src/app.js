@@ -14,6 +14,7 @@ import reportRoutes from './routes/reports.routes.js'
 import settingsRoutes from './routes/settings.routes.js'
 import categoriesRoutes from './routes/categories.routes.js'
 import customersRoutes from './routes/customers.routes.js'
+import suppliersRoutes from './routes/suppliers.routes.js'
 
 import { errorHandler } from './middleware/errorHandler.js'
 import { logger } from './utils/logger.js'
@@ -53,6 +54,7 @@ app.use('/api/reports', reportRoutes)
 app.use('/api/settings', settingsRoutes)
 app.use('/api/categories', categoriesRoutes)
 app.use('/api/customers', customersRoutes)
+app.use('/api/suppliers', suppliersRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() })
