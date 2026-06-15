@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import ws from 'ws'
 import { logger } from '../utils/logger.js'
 
 const supabaseUrl = process.env.SUPABASE_URL?.trim().replace(/\/$/, '')
@@ -16,7 +17,15 @@ logger.info('SUPABASE_SERVICE_ROLE_KEY detectada:', {
   endsWith: supabaseKey.slice(-6)
 })
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  realtime: {
+    transport: ws
+  },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false
+  }
+})
 
 export const testSupabaseConnection = async () => {
   try {
