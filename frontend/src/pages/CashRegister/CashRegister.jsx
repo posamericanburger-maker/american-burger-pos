@@ -467,7 +467,8 @@ const CashRegister = () => {
         body: JSON.stringify({
           type: movement.type,
           amount: Number(movement.amount || 0),
-          description: finalDescription || 'Movimiento sin descripción'
+          description: movement.description.trim() || 'Movimiento sin descripción',
+          reason: finalDescription || movement.description.trim() || 'Movimiento sin descripción'
         })
       })
 
@@ -494,7 +495,8 @@ const CashRegister = () => {
       Hora: new Date(item.created_at).toLocaleTimeString('es-CL'),
       Tipo: typeLabel(item.type),
       Monto: Number(item.amount || 0),
-      Descripcion: item.description || item.reason || '',
+      Descripcion: item.description || '',
+      Respaldo: item.reason || '',
       SesionCaja: item.cash_session_id || ''
     }))
 
