@@ -85,7 +85,7 @@ const applyInventoryForItems = async (items = [], action = 'discount', orderId =
           description:
             action === 'restore'
               ? `Devolución automática por edición de venta ${orderId}`
-              : `Descuento automático por edición de venta ${orderId}`,
+              : `Descuento automático por venta ${orderId}`,
           created_at: new Date().toISOString()
         })
     }
@@ -234,7 +234,10 @@ router.post('/', verifyToken, verifyRole(['cajero', 'admin']), async (req, res) 
 
     if (itemsError) throw itemsError
 
-    await applyInventoryForItems(orderItems, 'discount', order.id)
+    applyInventoryForItems(orderItems, 'discount', order.id)
+      .catch((err) => {
+        console.error('Error descontando inventario:', err?.message || err)
+      })
 
     return res.status(201).json({
       success: true,
