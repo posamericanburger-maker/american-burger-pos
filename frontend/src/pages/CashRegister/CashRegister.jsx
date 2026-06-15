@@ -53,6 +53,7 @@ const CashRegister = () => {
   const [openingAmount, setOpeningAmount] = useState('')
 
   const [suppliers, setSuppliers] = useState([])
+  const [selectedClosing, setSelectedClosing] = useState(null)
 
   const [supplierForm, setSupplierForm] = useState({
     id: '',
@@ -194,6 +195,33 @@ const CashRegister = () => {
   const expenseRecords = movements.filter((item) =>
     ['expense', 'egreso', 'gasto'].includes(String(item.type || '').toLowerCase())
   )
+
+  const getClosingNumber = (session, keys = []) => {
+    for (const key of keys) {
+      if (session?.[key] !== undefined && session?.[key] !== null) {
+        return Number(session[key] || 0)
+      }
+    }
+
+    return 0
+  }
+
+  const getClosingDifference = (session) => {
+    const savedDifference = session?.difference
+
+    if (savedDifference !== undefined && savedDifference !== null) {
+      return Number(savedDifference || 0)
+    }
+
+    const finalAmount = getClosingNumber(session, ['closing_amount', 'final_amount'])
+    const expectedAmount = getClosingNumber(session, ['expected_total'])
+
+    if (expectedAmount > 0) {
+      return finalAmount - expectedAmount
+    }
+
+    return 0
+  }
 
   const opening = Number(activeSession?.opening_amount || activeSession?.initial_amount || 0)
 
@@ -1041,35 +1069,49 @@ const CashRegister = () => {
                         <th>Inicial</th>
                         <th>Final</th>
                         <th>Diferencia</th>
+                        <th className="text-right">Acciones</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {closedSessions.map((session) => (
-                        <tr key={session.id} className="border-b">
-                          <td className="py-3">
-                            {new Date(session.opened_at || session.created_at).toLocaleString('es-CL')}
-                          </td>
-                          <td>
-                            {session.closed_at
-                              ? new Date(session.closed_at).toLocaleString('es-CL')
-                              : '-'}
-                          </td>
-                          <td>{money(session.opening_amount || session.initial_amount || 0)}</td>
-                          <td>{money(session.closing_amount || session.final_amount || 0)}</td>
-                          <td
-                            className={
-                              Number(session.difference || 0) < 0
-                                ? 'text-red-600 font-bold'
-                                : Number(session.difference || 0) > 0
-                                  ? 'text-green-600 font-bold'
-                                  : 'font-bold'
-                            }
-                          >
-                            {money(session.difference || 0)}
-                          </td>
-                        </tr>
-                      ))}
+                      {closedSessions.map((session) => {
+                        const sessionDifference = getClosingDifference(session)
+
+                        return (
+                          <tr key={session.id} className="border-b">
+                            <td className="py-3">
+                              {new Date(session.opened_at || session.created_at).toLocaleString('es-CL')}
+                            </td>
+                            <td>
+                              {session.closed_at
+                                ? new Date(session.closed_at).toLocaleString('es-CL')
+                                : '-'}
+                            </td>
+                            <td>{money(session.opening_amount || session.initial_amount || 0)}</td>
+                            <td>{money(session.closing_amount || session.final_amount || 0)}</td>
+                            <td
+                              className={
+                                sessionDifference < 0
+                                  ? 'text-red-600 font-bold'
+                                  : sessionDifference > 0
+                                    ? 'text-green-600 font-bold'
+                                    : 'font-bold'
+                              }
+                            >
+                              {money(sessionDifference)}
+                            </td>
+                            <td className="text-right">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedClosing(session)}
+                                className="bg-black text-yellow-400 px-4 py-2 rounded-lg font-bold text-sm"
+                              >
+                                Ver detalle
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1163,6 +1205,153 @@ const CashRegister = () => {
             </div>
           )}
         </div>
+
+        {selectedClosing && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-start gap-4 mb-5">
+                <div>
+                  <h2 className="text-3xl font-black">Detalle de cierre de caja</h2>
+                  <p className="text-gray-500 mt-1">
+                    Apertura: {new Date(selectedClosing.opened_at || selectedClosing.created_at).toLocaleString('es-CL')}
+                  </p>
+                  <p className="text-gray-500">
+                    Cierre:{' '}
+                    {selectedClosing.closed_at
+                      ? new Date(selectedClosing.closed_at).toLocaleString('es-CL')
+                      : 'Sin fecha de cierre'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedClosing(null)}
+                  className="bg-red-600 text-white px-4 py-2 rounded-xl font-bold"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="border rounded-xl p-4 bg-gray-50">
+                  <p className="text-gray-500 font-bold">Monto inicial</p>
+                  <h3 className="text-2xl font-black">
+                    {money(selectedClosing.opening_amount || selectedClosing.initial_amount || 0)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-xl p-4 bg-gray-50">
+                  <p className="text-gray-500 font-bold">Monto final real</p>
+                  <h3 className="text-2xl font-black">
+                    {money(selectedClosing.closing_amount || selectedClosing.final_amount || 0)}
+                  </h3>
+                </div>
+
+                <div className="border rounded-xl p-4 bg-gray-50">
+                  <p className="text-gray-500 font-bold">Diferencia</p>
+                  <h3
+                    className={`text-2xl font-black ${
+                      getClosingDifference(selectedClosing) < 0
+                        ? 'text-red-600'
+                        : getClosingDifference(selectedClosing) > 0
+                          ? 'text-green-600'
+                          : ''
+                    }`}
+                  >
+                    {money(getClosingDifference(selectedClosing))}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div className="border rounded-2xl p-5">
+                  <h3 className="text-xl font-black mb-4">Ventas por medio de pago</h3>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Efectivo</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['sales_cash']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Débito</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['sales_debit']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Crédito</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['sales_credit']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Transferencia</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['sales_transfer']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between text-xl font-black pt-2">
+                      <span>Total ventas</span>
+                      <span>{money(getClosingNumber(selectedClosing, ['total_sales']))}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border rounded-2xl p-5">
+                  <h3 className="text-xl font-black mb-4">Arqueo y movimientos</h3>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Ingresos manuales</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['income']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2 text-red-600">
+                      <span>Gastos</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['expenses']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2 text-red-600">
+                      <span>Retiros</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['withdrawals']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Esperado efectivo</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['expected_cash']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between border-b pb-2">
+                      <span>Esperado total</span>
+                      <strong>{money(getClosingNumber(selectedClosing, ['expected_total']))}</strong>
+                    </div>
+
+                    <div className="flex justify-between text-xl font-black pt-2">
+                      <span>Real total</span>
+                      <span>{money(getClosingNumber(selectedClosing, ['real_total', 'closing_amount', 'final_amount']))}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 border rounded-2xl p-5 bg-yellow-50">
+                <h3 className="text-lg font-black mb-2">Detalle técnico</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <p><strong>ID sesión:</strong> {selectedClosing.id}</p>
+                  <p><strong>Estado:</strong> {selectedClosing.status || 'closed'}</p>
+                  <p><strong>Abierta por:</strong> {selectedClosing.opened_by || '-'}</p>
+                  <p><strong>Cerrada por:</strong> {selectedClosing.closed_by || '-'}</p>
+                </div>
+
+                {getClosingNumber(selectedClosing, ['total_sales']) === 0 &&
+                  getClosingNumber(selectedClosing, ['expected_total']) === 0 && (
+                    <p className="text-sm text-gray-600 mt-4">
+                      Este cierre no tiene detalle completo porque fue registrado antes de guardar
+                      ventas, esperado, real y diferencia en Supabase.
+                    </p>
+                  )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
