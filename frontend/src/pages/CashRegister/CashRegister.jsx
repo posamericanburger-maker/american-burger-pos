@@ -34,16 +34,25 @@ const getList = (data, keys = []) => {
   return []
 }
 
+const typeLabel = (type) =>
+  ({
+    income: 'Ingreso',
+    expense: 'Gasto',
+    withdrawal: 'Retiro',
+    ingreso: 'Ingreso',
+    gasto: 'Gasto',
+    egreso: 'Gasto',
+    retiro: 'Retiro'
+  }[type] || type || 'Movimiento')
+
 const CashRegister = () => {
   const [activeTab, setActiveTab] = useState('caja')
   const [sessions, setSessions] = useState([])
   const [movements, setMovements] = useState([])
   const [orders, setOrders] = useState([])
-  const [cashClosings, setCashClosings] = useState([])
   const [openingAmount, setOpeningAmount] = useState('')
 
   const [suppliers, setSuppliers] = useState([])
-  const [expenseRecords, setExpenseRecords] = useState([])
 
   const [supplierForm, setSupplierForm] = useState({
     id: '',
@@ -107,32 +116,17 @@ const CashRegister = () => {
     return data
   }
 
-  const loadLocalData = () => {
-    setSuppliers(JSON.parse(localStorage.getItem('cashSuppliers') || '[]'))
-    setExpenseRecords(JSON.parse(localStorage.getItem('cashExpenseRecords') || '[]'))
-    setCashClosings(JSON.parse(localStorage.getItem('cashClosings') || '[]'))
-  }
-
-  const saveSuppliers = (nextSuppliers) => {
-    setSuppliers(nextSuppliers)
-    localStorage.setItem('cashSuppliers', JSON.stringify(nextSuppliers))
-  }
-
-  const saveExpenseRecords = (nextRecords) => {
-    setExpenseRecords(nextRecords)
-    localStorage.setItem('cashExpenseRecords', JSON.stringify(nextRecords))
-  }
-
   const loadCash = async () => {
     setLoading(true)
     setError('')
 
     try {
-      const [sessionsResult, movementsResult, ordersResult] =
+      const [sessionsResult, movementsResult, ordersResult, suppliersResult] =
         await Promise.allSettled([
           request('/cash/sessions'),
           request('/cash/movements'),
-          request('/orders')
+          request('/orders'),
+          request('/suppliers')
         ])
 
       if (sessionsResult.status === 'fulfilled') {
@@ -147,7 +141,11 @@ const CashRegister = () => {
         setOrders(getList(ordersResult.value, ['orders']))
       }
 
-      loadLocalData()
+      if (suppliersResult.status === 'fulfilled') {
+        setSuppliers(getList(suppliersResult.value, ['suppliers']))
+      } else {
+        setSuppliers(JSON.parse(localStorage.getItem('cashSuppliers') || '[]'))
+      }
     } catch (err) {
       setError(err.message || 'No se pudo cargar caja')
     } finally {
@@ -184,14 +182,18 @@ const CashRegister = () => {
     return orderDate >= openDate
   })
 
-  const sessionMovements = movements.filter((item) => {
-    if (!activeSession || !sessionStart) return false
+  const sessionMovements = movements.filter(
+    (item) => item.cash_session_id === activeSession?.id
+  )
 
-    const movementDate = new Date(item.created_at || item.createdAt || Date.now())
-    const openDate = new Date(sessionStart)
-
-    return movementDate >= openDate
+  const closedSessions = sessions.filter((session) => {
+    const status = String(session.status || '').toLowerCase()
+    return status === 'closed' || status === 'cerrada' || Boolean(session.closed_at)
   })
+
+  const expenseRecords = movements.filter((item) =>
+    ['expense', 'egreso', 'gasto'].includes(String(item.type || '').toLowerCase())
+  )
 
   const opening = Number(activeSession?.opening_amount || activeSession?.initial_amount || 0)
 
@@ -287,43 +289,32 @@ const CashRegister = () => {
         throw new Error('No hay caja abierta')
       }
 
-      const closingData = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        date: new Date().toISOString(),
-        session_id: activeSession.id || '',
-        opening,
-        sales_cash: salesByPayment.cash,
-        sales_debit: salesByPayment.debit,
-        sales_credit: salesByPayment.credit,
-        sales_transfer: salesByPayment.transfer,
-        total_sales: totalSales,
-        income: totalIncome,
-        expenses: totalExpenses,
-        withdrawals: totalWithdrawals,
-        expected_cash: expectedCash,
-        expected_debit: expectedDebit,
-        expected_credit: expectedCredit,
-        expected_transfer: expectedTransfer,
-        expected_total: expectedTotal,
-        real_cash: realCash,
-        real_debit: realDebit,
-        real_credit: realCredit,
-        real_transfer: realTransfer,
-        real_total: realTotal,
-        difference
-      }
-
       await request('/cash/close', {
         method: 'POST',
         body: JSON.stringify({
           closing_amount: realTotal,
-          final_amount: realTotal
+          final_amount: realTotal,
+          sales_cash: salesByPayment.cash,
+          sales_debit: salesByPayment.debit,
+          sales_credit: salesByPayment.credit,
+          sales_transfer: salesByPayment.transfer,
+          total_sales: totalSales,
+          income: totalIncome,
+          expenses: totalExpenses,
+          withdrawals: totalWithdrawals,
+          expected_cash: expectedCash,
+          expected_debit: expectedDebit,
+          expected_credit: expectedCredit,
+          expected_transfer: expectedTransfer,
+          expected_total: expectedTotal,
+          real_cash: realCash,
+          real_debit: realDebit,
+          real_credit: realCredit,
+          real_transfer: realTransfer,
+          real_total: realTotal,
+          difference
         })
       })
-
-      const updatedClosings = [closingData, ...cashClosings]
-      setCashClosings(updatedClosings)
-      localStorage.setItem('cashClosings', JSON.stringify(updatedClosings))
 
       setClosingAmounts({
         cash: '',
@@ -348,52 +339,54 @@ const CashRegister = () => {
     }
   }
 
-  const saveSupplier = (event) => {
+  const saveSupplier = async (event) => {
     event.preventDefault()
+    setSaving(true)
     setError('')
     setMessage('')
 
-    if (!supplierForm.name.trim()) {
-      setError('Ingresa el nombre del proveedor')
-      return
-    }
+    try {
+      if (!supplierForm.name.trim()) {
+        throw new Error('Ingresa el nombre del proveedor')
+      }
 
-    if (supplierForm.id) {
-      const updated = suppliers.map((supplier) =>
-        supplier.id === supplierForm.id
-          ? {
-              ...supplier,
-              name: supplierForm.name.trim(),
-              rut: supplierForm.rut.trim(),
-              phone: supplierForm.phone.trim(),
-              note: supplierForm.note.trim()
-            }
-          : supplier
-      )
-
-      saveSuppliers(updated)
-      setMessage('Proveedor actualizado correctamente')
-    } else {
-      const newSupplier = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      const body = {
         name: supplierForm.name.trim(),
         rut: supplierForm.rut.trim(),
         phone: supplierForm.phone.trim(),
-        note: supplierForm.note.trim(),
-        created_at: new Date().toISOString()
+        note: supplierForm.note.trim()
       }
 
-      saveSuppliers([newSupplier, ...suppliers])
-      setMessage('Proveedor agregado correctamente')
-    }
+      if (supplierForm.id) {
+        await request(`/suppliers/${supplierForm.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        })
 
-    setSupplierForm({
-      id: '',
-      name: '',
-      rut: '',
-      phone: '',
-      note: ''
-    })
+        setMessage('Proveedor actualizado correctamente')
+      } else {
+        await request('/suppliers', {
+          method: 'POST',
+          body: JSON.stringify(body)
+        })
+
+        setMessage('Proveedor agregado correctamente')
+      }
+
+      setSupplierForm({
+        id: '',
+        name: '',
+        rut: '',
+        phone: '',
+        note: ''
+      })
+
+      await loadCash()
+    } catch (err) {
+      setError(err.message || 'No se pudo guardar el proveedor')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const editSupplier = (supplier) => {
@@ -408,17 +401,30 @@ const CashRegister = () => {
     setActiveTab('proveedores')
   }
 
-  const deleteSupplier = (supplierId) => {
+  const deleteSupplier = async (supplierId) => {
     const confirmDelete = window.confirm('¿Eliminar este proveedor?')
     if (!confirmDelete) return
 
-    saveSuppliers(suppliers.filter((supplier) => supplier.id !== supplierId))
+    setSaving(true)
+    setError('')
+    setMessage('')
 
-    if (movement.supplierId === supplierId) {
-      setMovement((current) => ({ ...current, supplierId: '' }))
+    try {
+      await request(`/suppliers/${supplierId}`, {
+        method: 'DELETE'
+      })
+
+      if (movement.supplierId === supplierId) {
+        setMovement((current) => ({ ...current, supplierId: '' }))
+      }
+
+      setMessage('Proveedor eliminado')
+      await loadCash()
+    } catch (err) {
+      setError(err.message || 'No se pudo eliminar el proveedor')
+    } finally {
+      setSaving(false)
     }
-
-    setMessage('Proveedor eliminado')
   }
 
   const saveMovement = async (event) => {
@@ -465,22 +471,6 @@ const CashRegister = () => {
         })
       })
 
-      if (movement.type === 'expense') {
-        const newExpense = {
-          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-          fecha: new Date().toISOString(),
-          session_id: activeSession.id || '',
-          documento: movement.documentNumber.trim(),
-          proveedor: selectedSupplier?.name || '',
-          rut: selectedSupplier?.rut || '',
-          telefono: selectedSupplier?.phone || '',
-          monto: Number(movement.amount || 0),
-          descripcion: movement.description.trim()
-        }
-
-        saveExpenseRecords([newExpense, ...expenseRecords])
-      }
-
       setMovement({
         type: 'expense',
         amount: '',
@@ -498,24 +488,14 @@ const CashRegister = () => {
     }
   }
 
-  const deleteExpenseRecord = (id) => {
-    const confirmDelete = window.confirm('¿Eliminar este gasto del registro Excel?')
-    if (!confirmDelete) return
-
-    saveExpenseRecords(expenseRecords.filter((item) => item.id !== id))
-  }
-
   const exportExpensesExcel = () => {
     const rows = expenseRecords.map((item) => ({
-      Fecha: new Date(item.fecha).toLocaleDateString('es-CL'),
-      Hora: new Date(item.fecha).toLocaleTimeString('es-CL'),
-      Documento: item.documento || '',
-      Proveedor: item.proveedor || '',
-      RUT: item.rut || '',
-      Telefono: item.telefono || '',
-      Monto: Number(item.monto || 0),
-      Descripcion: item.descripcion || '',
-      SesionCaja: item.session_id || ''
+      Fecha: new Date(item.created_at).toLocaleDateString('es-CL'),
+      Hora: new Date(item.created_at).toLocaleTimeString('es-CL'),
+      Tipo: typeLabel(item.type),
+      Monto: Number(item.amount || 0),
+      Descripcion: item.description || item.reason || '',
+      SesionCaja: item.cash_session_id || ''
     }))
 
     const workbook = XLSX.utils.book_new()
@@ -862,7 +842,7 @@ const CashRegister = () => {
 
               <div className="card">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold">Registro de gastos exportable</h2>
+                  <h2 className="text-xl font-bold">Gastos guardados en Supabase</h2>
 
                   <button
                     type="button"
@@ -885,44 +865,22 @@ const CashRegister = () => {
                         <div className="flex justify-between gap-3">
                           <div>
                             <p className="font-bold">
-                              {item.proveedor || 'Sin proveedor'}
+                              {item.description || item.reason || 'Gasto sin descripción'}
                             </p>
 
                             <p className="text-xs text-gray-500">
-                              {new Date(item.fecha).toLocaleString('es-CL')}
+                              {new Date(item.created_at).toLocaleString('es-CL')}
                             </p>
 
-                            {item.documento && (
-                              <p className="text-sm text-gray-600">
-                                Documento: {item.documento}
-                              </p>
-                            )}
-
-                            {item.rut && (
-                              <p className="text-sm text-gray-600">
-                                RUT: {item.rut}
-                              </p>
-                            )}
-
-                            {item.descripcion && (
-                              <p className="text-sm mt-1">
-                                {item.descripcion}
-                              </p>
-                            )}
+                            <p className="text-sm text-gray-500">
+                              Sesión: {item.cash_session_id || 'Sin sesión'}
+                            </p>
                           </div>
 
                           <div className="text-right">
                             <strong className="text-red-600 text-lg">
-                              {money(item.monto)}
+                              {money(item.amount)}
                             </strong>
-
-                            <button
-                              type="button"
-                              onClick={() => deleteExpenseRecord(item.id)}
-                              className="block mt-2 bg-red-600 text-white px-3 py-1 rounded text-sm font-bold"
-                            >
-                              Eliminar
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -979,7 +937,8 @@ const CashRegister = () => {
 
                   <button
                     type="submit"
-                    className="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg"
+                    disabled={saving}
+                    className="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg disabled:opacity-50"
                   >
                     {supplierForm.id ? 'Guardar cambios' : 'Agregar proveedor'}
                   </button>
@@ -1055,7 +1014,7 @@ const CashRegister = () => {
           {activeTab === 'cierres' && (
             <div className="card">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Historial de cierres</h2>
+                <h2 className="text-xl font-bold">Historial de cierres desde Supabase</h2>
 
                 <button
                   type="button"
@@ -1066,7 +1025,7 @@ const CashRegister = () => {
                 </button>
               </div>
 
-              {cashClosings.length === 0 ? (
+              {closedSessions.length === 0 ? (
                 <div className="text-center text-gray-500 py-10">
                   No hay cierres registrados.
                 </div>
@@ -1075,33 +1034,37 @@ const CashRegister = () => {
                   <table className="w-full text-left">
                     <thead>
                       <tr className="border-b text-gray-500">
-                        <th className="py-3">Fecha</th>
-                        <th>Ventas</th>
-                        <th>Esperado</th>
-                        <th>Real</th>
+                        <th className="py-3">Apertura</th>
+                        <th>Cierre</th>
+                        <th>Inicial</th>
+                        <th>Final</th>
                         <th>Diferencia</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {cashClosings.map((closing) => (
-                        <tr key={closing.id} className="border-b">
+                      {closedSessions.map((session) => (
+                        <tr key={session.id} className="border-b">
                           <td className="py-3">
-                            {new Date(closing.date).toLocaleString('es-CL')}
+                            {new Date(session.opened_at || session.created_at).toLocaleString('es-CL')}
                           </td>
-                          <td>{money(closing.total_sales)}</td>
-                          <td>{money(closing.expected_total)}</td>
-                          <td>{money(closing.real_total)}</td>
+                          <td>
+                            {session.closed_at
+                              ? new Date(session.closed_at).toLocaleString('es-CL')
+                              : '-'}
+                          </td>
+                          <td>{money(session.opening_amount || session.initial_amount || 0)}</td>
+                          <td>{money(session.closing_amount || session.final_amount || 0)}</td>
                           <td
                             className={
-                              closing.difference < 0
+                              Number(session.difference || 0) < 0
                                 ? 'text-red-600 font-bold'
-                                : closing.difference > 0
+                                : Number(session.difference || 0) > 0
                                   ? 'text-green-600 font-bold'
                                   : 'font-bold'
                             }
                           >
-                            {money(closing.difference)}
+                            {money(session.difference || 0)}
                           </td>
                         </tr>
                       ))}
@@ -1113,46 +1076,88 @@ const CashRegister = () => {
           )}
 
           {activeTab === 'movimientos' && (
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Movimientos de caja</h2>
+            <div className="space-y-5">
+              <div className="card">
+                <h2 className="text-xl font-bold mb-4">Movimientos de caja actual</h2>
 
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">
-                  Cargando caja...
-                </div>
-              ) : sessionMovements.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No hay movimientos registrados.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b text-gray-500">
-                        <th className="py-3">Fecha</th>
-                        <th>Tipo</th>
-                        <th>Descripción</th>
-                        <th className="text-right">Monto</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {sessionMovements.map((item) => (
-                        <tr key={item.id} className="border-b">
-                          <td className="py-3">
-                            {new Date(item.created_at || Date.now()).toLocaleString('es-CL')}
-                          </td>
-                          <td>{item.type}</td>
-                          <td>{item.description || item.notes || 'Sin descripción'}</td>
-                          <td className="text-right font-bold">
-                            {money(item.amount)}
-                          </td>
+                {loading ? (
+                  <div className="text-center py-8 text-gray-500">
+                    Cargando caja...
+                  </div>
+                ) : sessionMovements.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No hay movimientos registrados en la caja actual.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b text-gray-500">
+                          <th className="py-3">Fecha</th>
+                          <th>Tipo</th>
+                          <th>Descripción</th>
+                          <th className="text-right">Monto</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+
+                      <tbody>
+                        {sessionMovements.map((item) => (
+                          <tr key={item.id} className="border-b">
+                            <td className="py-3">
+                              {new Date(item.created_at || Date.now()).toLocaleString('es-CL')}
+                            </td>
+                            <td>{typeLabel(item.type)}</td>
+                            <td>{item.description || item.reason || item.notes || 'Sin descripción'}</td>
+                            <td className="text-right font-bold">
+                              {money(item.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="card">
+                <h2 className="text-xl font-bold mb-4">Historial de movimientos</h2>
+
+                {movements.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    No hay movimientos históricos.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b text-gray-500">
+                          <th className="py-3">Fecha</th>
+                          <th>Tipo</th>
+                          <th>Descripción</th>
+                          <th>Sesión</th>
+                          <th className="text-right">Monto</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {movements.map((item) => (
+                          <tr key={item.id} className="border-b">
+                            <td className="py-3">
+                              {new Date(item.created_at || Date.now()).toLocaleString('es-CL')}
+                            </td>
+                            <td>{typeLabel(item.type)}</td>
+                            <td>{item.description || item.reason || item.notes || 'Sin descripción'}</td>
+                            <td className="text-xs">{item.cash_session_id || '-'}</td>
+                            <td className="text-right font-bold">
+                              {money(item.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
