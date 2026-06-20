@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import qz from 'qz-tray'
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'https://american-burger-pos-api-d8r1.onrender.com/api'
-
-const PRINTER_NAME = 'XP-80C'
 
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
@@ -40,13 +37,6 @@ const normalizeText = (value = '') =>
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-
-const cleanPrintText = (value = '') =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7EñÑ]/g, '')
     .trim()
 
 const categoryLabel = (name = '') => {
@@ -130,18 +120,6 @@ const POSMostrador = () => {
     }
 
     return data
-  }
-
-  const connectPrinter = async () => {
-    if (!qz.websocket.isActive()) {
-      await qz.websocket.connect()
-    }
-
-    return qz.configs.create(PRINTER_NAME, {
-      encoding: 'CP850',
-      copies: 1,
-      jobName: 'American Burger POS'
-    })
   }
 
   const checkCashStatus = async () => {
@@ -311,114 +289,238 @@ const POSMostrador = () => {
 
   const paymentMethodText = {
     cash: 'EFECTIVO',
-    debit: 'DEBITO',
-    credit: 'CREDITO',
+    debit: 'DÉBITO',
+    credit: 'CRÉDITO',
     transfer: 'TRANSFERENCIA'
   }[paymentMethod] || paymentMethod.toUpperCase()
 
-  const printKitchenTicket = async () => {
-    const config = await connectPrinter()
+  const printKitchenTicket = () => {
+    const productLines = cart
+      .map((item) => {
+        return `
+          <div class="item">
+            <div class="qty">${item.quantity} x</div>
+            <div class="name">${item.name}</div>
+          </div>
+        `
+      })
+      .join('')
 
-    const data = [
-      '\x1B\x40',
-      '\x1B\x61\x01',
-      '\x1B\x21\x20',
-      'COMANDA\n',
-      '\x1B\x21\x00',
-      'COCINA - MOSTRADOR\n',
-      `${new Date().toLocaleString('es-CL')}\n`,
-      '--------------------------------\n'
-    ]
+    const html = `
+      <html>
+        <head>
+          <title>Comanda Cocina</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              color: #000;
+              background: #fff;
+            }
+            .center { text-align: center; }
+            .title { font-size: 24px; font-weight: 900; margin: 0; }
+            .subtitle { font-size: 14px; font-weight: 700; margin-top: 4px; }
+            .line { border-top: 2px dashed #000; margin: 10px 0; }
+            .item {
+              display: flex;
+              gap: 8px;
+              font-size: 20px;
+              font-weight: 900;
+              margin: 12px 0;
+            }
+            .qty { min-width: 42px; }
+            .name { flex: 1; }
+            .customer-title {
+              font-size: 15px;
+              font-weight: 900;
+              text-align: center;
+              margin-bottom: 3px;
+            }
+            .customer-name {
+              font-size: 21px;
+              font-weight: 900;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            .notes-title { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
+            .notes { font-size: 17px; font-weight: 900; white-space: pre-wrap; }
+            .footer { font-size: 12px; margin-top: 10px; }
+          </style>
+        </head>
 
-    if (customerName.trim()) {
-      data.push(
-        '\x1B\x61\x01',
-        'CLIENTE\n',
-        '\x1B\x21\x20',
-        `${cleanPrintText(customerName).toUpperCase()}\n`,
-        '\x1B\x21\x00',
-        '--------------------------------\n'
-      )
-    }
+        <body>
+          <div class="center">
+            <h1 class="title">COMANDA</h1>
+            <div class="subtitle">COCINA - MOSTRADOR</div>
+            <div class="footer">${new Date().toLocaleString('es-CL')}</div>
+          </div>
 
-    data.push('\x1B\x61\x00')
+          <div class="line"></div>
 
-    cart.forEach((item) => {
-      data.push(
-        '\x1B\x21\x20',
-        `${item.quantity} x ${cleanPrintText(item.name)}\n`,
-        '\x1B\x21\x00'
-      )
-    })
+          ${
+            customerName.trim()
+              ? `
+                <div class="customer-title">CLIENTE</div>
+                <div class="customer-name">${customerName.trim()}</div>
+                <div class="line"></div>
+              `
+              : ''
+          }
 
-    data.push(
-      '--------------------------------\n',
-      'NOTAS DEL PEDIDO:\n',
-      '\x1B\x21\x20',
-      `${cleanPrintText(notes) || 'SIN NOTAS'}\n`,
-      '\x1B\x21\x00',
-      '--------------------------------\n',
-      '\x1B\x61\x01',
-      'AMERICAN BURGER\n',
-      '\n\n\n',
-      '\x1D\x56\x00'
-    )
+          ${productLines}
 
-    await qz.print(config, data)
+          <div class="line"></div>
+
+          <div class="notes-title">NOTAS DEL PEDIDO:</div>
+          <div class="notes">${notes.trim() || 'SIN NOTAS'}</div>
+
+          <div class="line"></div>
+
+          <div class="center footer">AMERICAN BURGER</div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 400)
   }
 
-  const printCustomerReceipt = async () => {
-    const config = await connectPrinter()
+  const printCustomerReceipt = () => {
+    const productLines = cart
+      .map((item) => {
+        const lineTotal = Number(item.price || 0) * Number(item.quantity || 0)
 
-    const data = [
-      '\x1B\x40',
-      '\x1B\x61\x01',
-      '\x1B\x21\x20',
-      'AMERICAN BURGER\n',
-      '\x1B\x21\x00',
-      'ARICA - CHILE\n',
-      'RECIBO DE COMPRA\n',
-      '--------------------------------\n',
-      '\x1B\x61\x00',
-      `Fecha: ${new Date().toLocaleDateString('es-CL')}\n`,
-      `Hora: ${new Date().toLocaleTimeString('es-CL')}\n`,
-      'Tipo: Mostrador\n'
-    ]
+        return `
+          <div class="product">
+            <div>
+              <strong>${item.quantity} x ${item.name}</strong>
+              <br />
+              <span>${money(item.price)} c/u</span>
+            </div>
+            <div class="right">${money(lineTotal)}</div>
+          </div>
+        `
+      })
+      .join('')
 
-    if (customerName.trim()) {
-      data.push(`Cliente: ${cleanPrintText(customerName)}\n`)
-    }
+    const html = `
+      <html>
+        <head>
+          <title>Recibo Cliente</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              font-size: 12px;
+              color: #000;
+              background: #fff;
+            }
+            .center { text-align: center; }
+            .brand { font-size: 22px; font-weight: 900; margin: 0; }
+            .small { font-size: 11px; }
+            .line { border-top: 1px dashed #000; margin: 8px 0; }
+            .row,
+            .product {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+              margin: 6px 0;
+            }
+            .right { text-align: right; white-space: nowrap; }
+            .total { font-size: 18px; font-weight: 900; }
+            .thanks { font-size: 12px; margin-top: 10px; text-align: center; }
+          </style>
+        </head>
 
-    data.push(
-      `Pago: ${paymentMethodText}\n`,
-      '--------------------------------\n'
-    )
+        <body>
+          <div class="center">
+            <h1 class="brand">AMERICAN BURGER</h1>
+            <div>ARICA - CHILE</div>
+            <div class="small">RECIBO DE COMPRA</div>
+          </div>
 
-    cart.forEach((item) => {
-      const lineTotal = Number(item.price || 0) * Number(item.quantity || 0)
+          <div class="line"></div>
 
-      data.push(
-        `${item.quantity} x ${cleanPrintText(item.name)}\n`,
-        `  ${money(item.price)} c/u  ${money(lineTotal)}\n`
-      )
-    })
+          <div class="row">
+            <span>Fecha</span>
+            <span>${new Date().toLocaleDateString('es-CL')}</span>
+          </div>
 
-    data.push(
-      '--------------------------------\n',
-      '\x1B\x21\x20',
-      `TOTAL: ${money(total)}\n`,
-      '\x1B\x21\x00',
-      'Precios con IVA incluido\n',
-      '--------------------------------\n',
-      '\x1B\x61\x01',
-      'Gracias por tu compra\n',
-      'AMERICAN BURGER\n',
-      '\x1B\x70\x00\x19\xFA',
-      '\n\n\n',
-      '\x1D\x56\x00'
-    )
+          <div class="row">
+            <span>Hora</span>
+            <span>${new Date().toLocaleTimeString('es-CL')}</span>
+          </div>
 
-    await qz.print(config, data)
+          <div class="row">
+            <span>Tipo</span>
+            <span>Mostrador</span>
+          </div>
+
+          ${
+            customerName.trim()
+              ? `
+                <div class="row">
+                  <span>Cliente</span>
+                  <span>${customerName.trim()}</span>
+                </div>
+              `
+              : ''
+          }
+
+          <div class="row">
+            <span>Pago</span>
+            <span>${paymentMethodText}</span>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="row total">
+            <span>TOTAL</span>
+            <span>${money(total)}</span>
+          </div>
+
+          <div class="center small">
+            Precios con IVA incluido
+          </div>
+
+          <div class="line"></div>
+
+          <div class="thanks">
+            Gracias por tu compra<br />
+            🍔 American Burger 🍔
+          </div>
+        </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank')
+    if (!win) return
+
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+
+    setTimeout(() => {
+      win.print()
+    }, 900)
   }
 
   const submitOrder = async () => {
@@ -469,14 +571,13 @@ const POSMostrador = () => {
         body: JSON.stringify(payload)
       })
 
-      try {
-        await printKitchenTicket()
-        await printCustomerReceipt()
-        setMessage('Venta registrada correctamente. Comanda y recibo enviados a la XP-80C.')
-      } catch (printError) {
-        setMessage('Venta registrada correctamente, pero no se pudo imprimir. Revisa QZ Tray y la XP-80C.')
-      }
+      printKitchenTicket()
 
+      setTimeout(() => {
+        printCustomerReceipt()
+      }, 900)
+
+      setMessage('Venta registrada correctamente. Comanda y recibo enviados a impresión.')
       clearOrder()
       loadData()
     } catch (err) {
@@ -486,14 +587,8 @@ const POSMostrador = () => {
     }
   }
 
-  const printTicket = async () => {
-    try {
-      setError('')
-      await printCustomerReceipt()
-      setMessage('Recibo enviado a impresión.')
-    } catch {
-      setError('No se pudo imprimir. Verifica que QZ Tray esté abierto y que la impresora sea XP-80C.')
-    }
+  const printTicket = () => {
+    printCustomerReceipt()
   }
 
   return (
