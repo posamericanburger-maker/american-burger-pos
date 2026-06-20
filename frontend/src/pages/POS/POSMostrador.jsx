@@ -72,6 +72,37 @@ const categoryOrderIndex = (name = '') => {
   return index === -1 ? 999 : index
 }
 
+const printHtmlHidden = (html, delay = 500) => {
+  const iframe = document.createElement('iframe')
+
+  iframe.style.position = 'fixed'
+  iframe.style.right = '0'
+  iframe.style.bottom = '0'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+  iframe.style.opacity = '0'
+
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentWindow.document
+
+  doc.open()
+  doc.write(html)
+  doc.close()
+
+  setTimeout(() => {
+    iframe.contentWindow.focus()
+    iframe.contentWindow.print()
+
+    setTimeout(() => {
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe)
+      }
+    }, 1200)
+  }, delay)
+}
+
 const POSMostrador = () => {
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
@@ -384,16 +415,7 @@ const POSMostrador = () => {
       </html>
     `
 
-    const win = window.open('', '_blank')
-    if (!win) return
-
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-
-    setTimeout(() => {
-      win.print()
-    }, 400)
+    printHtmlHidden(html, 400)
   }
 
   const printCustomerReceipt = () => {
@@ -511,16 +533,7 @@ const POSMostrador = () => {
       </html>
     `
 
-    const win = window.open('', '_blank')
-    if (!win) return
-
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-
-    setTimeout(() => {
-      win.print()
-    }, 900)
+    printHtmlHidden(html, 900)
   }
 
   const submitOrder = async () => {
