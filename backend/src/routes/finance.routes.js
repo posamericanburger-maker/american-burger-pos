@@ -3,9 +3,7 @@ import XLSX from 'xlsx'
 import { supabase } from '../config/supabase.js'
 
 const router = express.Router()
-
 const db = supabase.schema('public')
-
 const IVA_RATE_DEFAULT = 0.19
 
 const numberValue = (value) => {
@@ -23,14 +21,10 @@ const getMonthRange = (month) => {
 }
 
 const getSettings = async () => {
-  const { data, error } = await db
-    .from('finance_settings')
-    .select('*')
-
+  const { data, error } = await db.from('finance_settings').select('*')
   if (error) throw error
 
   const settings = {}
-
   for (const row of data || []) {
     settings[row.key] = numberValue(row.value)
   }
@@ -90,11 +84,11 @@ const getOrderItems = async (start, end) => {
 const orderTotal = (order) => {
   return numberValue(
     order.total ||
-    order.total_amount ||
-    order.amount ||
-    order.grand_total ||
-    order.final_total ||
-    0
+      order.total_amount ||
+      order.amount ||
+      order.grand_total ||
+      order.final_total ||
+      0
   )
 }
 
@@ -133,19 +127,19 @@ const calculateFinance = async (month) => {
   for (const item of orderItems) {
     const name = String(
       item.product_name ||
-      item.name ||
-      item.description ||
-      item.name_snapshot ||
-      ''
+        item.name ||
+        item.description ||
+        item.name_snapshot ||
+        ''
     ).trim()
 
     const qty = numberValue(item.quantity || item.qty || 1)
 
     const itemTotal = numberValue(
       item.total ||
-      item.subtotal ||
-      numberValue(item.unit_price || item.price) * qty ||
-      0
+        item.subtotal ||
+        numberValue(item.unit_price || item.price) * qty ||
+        0
     )
 
     const productCost = productCostMap.get(name.toLowerCase())
@@ -396,26 +390,12 @@ router.get('/export-excel', async (req, res) => {
   res.send(buffer)
 })
 
-router.get('/debug', async (req, res) => {
-  const settings = await db
-    .from('finance_settings')
-    .select('*')
-
-  const fixed = await db
-    .from('finance_fixed_costs')
-    .select('*')
-    .limit(5)
-
-  const products = await db
-    .from('finance_product_costs')
-    .select('*')
-    .limit(5)
-
+router.get('/debug', (req, res) => {
   res.json({
-    supabaseUrl: process.env.SUPABASE_URL,
-    settings,
-    fixed,
-    products
+    VERSION: 'FINANCE V99',
+    FECHA: new Date().toISOString(),
+    MENSAJE: 'SI VES ESTO, RENDER ESTA EJECUTANDO EL CODIGO NUEVO',
+    SUPABASE_URL: process.env.SUPABASE_URL
   })
 })
 
