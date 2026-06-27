@@ -19,6 +19,7 @@ const Sidebar = () => {
     { label: 'Caja', path: '/caja', icon: '💰', roles: ['admin', 'cajero'] },
     { label: 'Cocina', path: '/cocina', icon: '👨‍🍳', roles: ['admin', 'cocina'] },
     { label: 'Productos', path: '/productos', icon: '📦', roles: ['admin'] },
+    { label: 'Finanzas', path: '/finanzas', icon: '📊', roles: ['admin'] },
     { label: 'Categorías', path: '/categorias', icon: '📂', roles: ['admin'] },
     { label: 'Combos', path: '/combos', icon: '🍱', roles: ['admin'] },
     { label: 'Inventario', path: '/inventario', icon: '📈', roles: ['admin'] },
