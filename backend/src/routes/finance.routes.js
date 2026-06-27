@@ -3,8 +3,32 @@ import XLSX from 'xlsx'
 import { supabase } from '../config/supabase.js'
 
 const router = express.Router()
-const db = supabase.schema('public')
-const IVA_RATE_DEFAULT = 0.19
+
+const IVA_RATE = 0.19
+const TARGET_PROFIT = 1000000
+const WORKING_DAYS = 26
+const FIXED_COSTS_TOTAL = 2210000
+
+const productCosts = [
+  { product_name: 'Cheese Burger', final_cost: 2775 },
+  { product_name: 'Bacon Cheese Burger', final_cost: 3069 },
+  { product_name: 'BBQ Burger', final_cost: 3294 },
+  { product_name: 'American Burger', final_cost: 3184 },
+  { product_name: 'California Burger', final_cost: 3360 },
+  { product_name: 'Crispy Burger', final_cost: 2618 },
+  { product_name: 'Veggie Burger', final_cost: 3138 },
+  { product_name: 'Oklahoma Burger', final_cost: 3735 },
+  { product_name: 'Buffalo Burger', final_cost: 4939 },
+  { product_name: 'Alitas BBQ', final_cost: 4147 },
+  { product_name: 'Alitas Crispy', final_cost: 4147 },
+  { product_name: 'Crispy Tenders', final_cost: 3976 },
+  { product_name: 'American Fries', final_cost: 2758 },
+  { product_name: 'Cheese Fries', final_cost: 2330 },
+  { product_name: 'Papas fritas', final_cost: 1100 },
+  { product_name: 'Aros de Cebolla', final_cost: 1438 },
+  { product_name: 'Te o Café', final_cost: 400 },
+  { product_name: 'Bebida en Lata 330cc', final_cost: 915 }
+]
 
 const numberValue = (value) => {
   const n = Number(value)
@@ -20,46 +44,8 @@ const getMonthRange = (month) => {
   return { safeMonth, start, end }
 }
 
-const getSettings = async () => {
-  const { data, error } = await db.from('finance_settings').select('*')
-  if (error) throw error
-
-  const settings = {}
-  for (const row of data || []) {
-    settings[row.key] = numberValue(row.value)
-  }
-
-  return {
-    ivaRate: settings.iva_rate || IVA_RATE_DEFAULT,
-    targetProfit: settings.target_profit || 1000000,
-    workingDays: settings.working_days || 26
-  }
-}
-
-const getFixedCosts = async (month) => {
-  const { data, error } = await db
-    .from('finance_fixed_costs')
-    .select('*')
-    .eq('month', month)
-    .order('concept')
-
-  if (error) throw error
-  return data || []
-}
-
-const getProductCosts = async () => {
-  const { data, error } = await db
-    .from('finance_product_costs')
-    .select('*')
-    .eq('active', true)
-    .order('product_name')
-
-  if (error) throw error
-  return data || []
-}
-
 const getOrders = async (start, end) => {
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('orders')
     .select('*')
     .gte('created_at', start)
@@ -67,17 +53,6 @@ const getOrders = async (start, end) => {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return data || []
-}
-
-const getOrderItems = async (start, end) => {
-  const { data, error } = await db
-    .from('order_items')
-    .select('*')
-    .gte('created_at', start)
-    .lt('created_at', end)
-
-  if (error) return []
   return data || []
 }
 
@@ -94,12 +69,7 @@ const orderTotal = (order) => {
 
 const calculateFinance = async (month) => {
   const { safeMonth, start, end } = getMonthRange(month)
-
-  const settings = await getSettings()
   const orders = await getOrders(start, end)
-  const orderItems = await getOrderItems(start, end)
-  const fixedCosts = await getFixedCosts(safeMonth)
-  const productCosts = await getProductCosts()
 
   const productCostMap = new Map()
 
@@ -114,76 +84,73 @@ const calculateFinance = async (month) => {
     return sum + orderTotal(order)
   }, 0)
 
-  const netSales = totalSales / (1 + settings.ivaRate)
-  const ivaDebit = totalSales - netSales
-
-  const totalFixedCosts = fixedCosts.reduce((sum, item) => {
-    return sum + numberValue(item.amount)
-  }, 0)
-
-  let totalVariableCost = 0
   const profitabilityMap = new Map()
+  let totalVariableCost = 0
 
-  for (const item of orderItems) {
-    const name = String(
-      item.product_name ||
-        item.name ||
-        item.description ||
-        item.name_snapshot ||
-        ''
-    ).trim()
+  for (const order of orders) {
+    const items = Array.isArray(order.items) ? order.items : []
 
-    const qty = numberValue(item.quantity || item.qty || 1)
+    for (const item of items) {
+      const name = String(
+        item.product_name ||
+          item.name ||
+          item.description ||
+          item.name_snapshot ||
+          ''
+      ).trim()
 
-    const itemTotal = numberValue(
-      item.total ||
-        item.subtotal ||
-        numberValue(item.unit_price || item.price) * qty ||
-        0
-    )
+      const qty = numberValue(item.quantity || item.qty || 1)
 
-    const productCost = productCostMap.get(name.toLowerCase())
-    const finalCost = productCost ? numberValue(productCost.final_cost) : 0
-    const costTotal = finalCost * qty
+      const itemTotal = numberValue(
+        item.total ||
+          item.subtotal ||
+          numberValue(item.unit_price || item.price) * qty ||
+          0
+      )
 
-    totalVariableCost += costTotal
+      const productCost = productCostMap.get(name.toLowerCase())
+      const finalCost = productCost ? numberValue(productCost.final_cost) : 0
+      const costTotal = finalCost * qty
 
-    const key = name || 'Producto sin nombre'
+      totalVariableCost += costTotal
 
-    if (!profitabilityMap.has(key)) {
-      profitabilityMap.set(key, {
-        producto: key,
-        cantidad: 0,
-        ventas: 0,
-        costo: 0,
-        contribucion: 0,
-        margen: 0
-      })
+      const key = name || 'Producto sin nombre'
+
+      if (!profitabilityMap.has(key)) {
+        profitabilityMap.set(key, {
+          producto: key,
+          cantidad: 0,
+          ventas: 0,
+          costo: 0,
+          contribucion: 0,
+          margen: 0
+        })
+      }
+
+      const row = profitabilityMap.get(key)
+      row.cantidad += qty
+      row.ventas += itemTotal
+      row.costo += costTotal
+      row.contribucion = row.ventas - row.costo
+      row.margen = row.ventas > 0 ? row.contribucion / row.ventas : 0
     }
-
-    const row = profitabilityMap.get(key)
-
-    row.cantidad += qty
-    row.ventas += itemTotal
-    row.costo += costTotal
-    row.contribucion = row.ventas - row.costo
-    row.margen = row.ventas > 0 ? row.contribucion / row.ventas : 0
   }
 
+  const netSales = totalSales / (1 + IVA_RATE)
+  const ivaDebit = totalSales - netSales
   const ivaCreditEstimated =
-    totalVariableCost - totalVariableCost / (1 + settings.ivaRate)
-
+    totalVariableCost - totalVariableCost / (1 + IVA_RATE)
   const ivaToPayEstimated = Math.max(ivaDebit - ivaCreditEstimated, 0)
 
   const grossProfit = totalSales - totalVariableCost
-  const operatingProfit = grossProfit - totalFixedCosts
+  const operatingProfit = grossProfit - FIXED_COSTS_TOTAL
   const averageMargin = totalSales > 0 ? grossProfit / totalSales : 0
 
   const breakEvenMonthly =
-    averageMargin > 0 ? totalFixedCosts / averageMargin : 0
+    averageMargin > 0 ? FIXED_COSTS_TOTAL / averageMargin : 0
 
   const breakEvenDaily =
-    settings.workingDays > 0 ? breakEvenMonthly / settings.workingDays : 0
+    WORKING_DAYS > 0 ? breakEvenMonthly / WORKING_DAYS : 0
 
   const status =
     totalSales >= breakEvenMonthly && breakEvenMonthly > 0
@@ -196,7 +163,11 @@ const calculateFinance = async (month) => {
 
   return {
     month: safeMonth,
-    settings,
+    settings: {
+      ivaRate: IVA_RATE,
+      targetProfit: TARGET_PROFIT,
+      workingDays: WORKING_DAYS
+    },
     summary: {
       totalSales,
       netSales,
@@ -204,20 +175,26 @@ const calculateFinance = async (month) => {
       ivaCreditEstimated,
       ivaToPayEstimated,
       totalVariableCost,
-      totalFixedCosts,
+      totalFixedCosts: FIXED_COSTS_TOTAL,
       grossProfit,
       operatingProfit,
       averageMargin,
       breakEvenMonthly,
       breakEvenDaily,
-      targetProfit: settings.targetProfit,
+      targetProfit: TARGET_PROFIT,
       salesForTargetProfit:
         averageMargin > 0
-          ? (totalFixedCosts + settings.targetProfit) / averageMargin
+          ? (FIXED_COSTS_TOTAL + TARGET_PROFIT) / averageMargin
           : 0,
       status
     },
-    fixedCosts,
+    fixedCosts: [
+      {
+        concept: 'Costos fijos mensuales',
+        amount: FIXED_COSTS_TOTAL,
+        notes: 'Valor fijo temporal'
+      }
+    ],
     productCosts,
     profitability: Array.from(profitabilityMap.values()),
     orders
@@ -230,90 +207,30 @@ router.get('/summary', async (req, res) => {
 })
 
 router.get('/fixed-costs', async (req, res) => {
-  const month = req.query.month || new Date().toISOString().slice(0, 7)
-  const data = await getFixedCosts(month)
-  res.json(data)
+  res.json([
+    {
+      concept: 'Costos fijos mensuales',
+      amount: FIXED_COSTS_TOTAL,
+      notes: 'Valor fijo temporal'
+    }
+  ])
 })
 
 router.post('/fixed-costs', async (req, res) => {
-  const { month, costs } = req.body
-
-  if (!month || !Array.isArray(costs)) {
-    return res.status(400).json({
-      message: 'Debe enviar month y costs[]'
-    })
-  }
-
-  const { error: deleteError } = await db
-    .from('finance_fixed_costs')
-    .delete()
-    .eq('month', month)
-
-  if (deleteError) throw deleteError
-
-  const rows = costs
-    .filter((item) => item?.concept)
-    .map((item) => ({
-      month,
-      concept: item.concept,
-      amount: numberValue(item.amount),
-      notes: item.notes || null
-    }))
-
-  if (rows.length === 0) {
-    return res.json({
-      message: 'Costos fijos guardados correctamente',
-      data: []
-    })
-  }
-
-  const { data, error } = await db
-    .from('finance_fixed_costs')
-    .insert(rows)
-    .select()
-
-  if (error) throw error
-
   res.json({
-    message: 'Costos fijos guardados correctamente',
-    data
+    message: 'Costos fijos temporales activos',
+    data: []
   })
 })
 
 router.get('/product-costs', async (req, res) => {
-  const data = await getProductCosts()
-  res.json(data)
+  res.json(productCosts)
 })
 
 router.post('/product-costs', async (req, res) => {
-  const { products } = req.body
-
-  if (!Array.isArray(products)) {
-    return res.status(400).json({
-      message: 'Debe enviar products[]'
-    })
-  }
-
-  const rows = products
-    .filter((product) => product?.product_name)
-    .map((product) => ({
-      product_name: product.product_name,
-      sale_price: numberValue(product.sale_price),
-      final_cost: numberValue(product.final_cost),
-      category: product.category || null,
-      active: product.active !== false
-    }))
-
-  const { data, error } = await db
-    .from('finance_product_costs')
-    .upsert(rows, { onConflict: 'product_name' })
-    .select()
-
-  if (error) throw error
-
   res.json({
-    message: 'Costos de productos guardados correctamente',
-    data
+    message: 'Costos de productos temporales activos',
+    data: productCosts
   })
 })
 
@@ -322,42 +239,28 @@ router.get('/export-excel', async (req, res) => {
 
   const wb = XLSX.utils.book_new()
 
-  const dashboard = [
-    ['Indicador', 'Valor'],
-    ['Mes', result.month],
-    ['Ventas totales', result.summary.totalSales],
-    ['Ventas netas', result.summary.netSales],
-    ['IVA débito estimado', result.summary.ivaDebit],
-    ['IVA crédito estimado', result.summary.ivaCreditEstimated],
-    ['IVA a pagar estimado', result.summary.ivaToPayEstimated],
-    ['Costo variable', result.summary.totalVariableCost],
-    ['Costos fijos', result.summary.totalFixedCosts],
-    ['Utilidad bruta', result.summary.grossProfit],
-    ['Utilidad operativa', result.summary.operatingProfit],
-    ['Margen promedio', result.summary.averageMargin],
-    ['Punto equilibrio mensual', result.summary.breakEvenMonthly],
-    ['Punto equilibrio diario', result.summary.breakEvenDaily],
-    ['Meta utilidad', result.summary.targetProfit],
-    ['Ventas para meta utilidad', result.summary.salesForTargetProfit],
-    ['Estado negocio', result.summary.status]
-  ]
-
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.aoa_to_sheet(dashboard),
+    XLSX.utils.aoa_to_sheet([
+      ['Indicador', 'Valor'],
+      ['Mes', result.month],
+      ['Ventas totales', result.summary.totalSales],
+      ['Ventas netas', result.summary.netSales],
+      ['IVA débito estimado', result.summary.ivaDebit],
+      ['IVA crédito estimado', result.summary.ivaCreditEstimated],
+      ['IVA a pagar estimado', result.summary.ivaToPayEstimated],
+      ['Costo variable', result.summary.totalVariableCost],
+      ['Costos fijos', result.summary.totalFixedCosts],
+      ['Utilidad bruta', result.summary.grossProfit],
+      ['Utilidad operativa', result.summary.operatingProfit],
+      ['Margen promedio', result.summary.averageMargin],
+      ['Punto equilibrio mensual', result.summary.breakEvenMonthly],
+      ['Punto equilibrio diario', result.summary.breakEvenDaily],
+      ['Meta utilidad', result.summary.targetProfit],
+      ['Ventas para meta utilidad', result.summary.salesForTargetProfit],
+      ['Estado negocio', result.summary.status]
+    ]),
     'Dashboard'
-  )
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.fixedCosts || []),
-    'Costos Fijos'
-  )
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(result.productCosts || []),
-    'Costos Productos'
   )
 
   XLSX.utils.book_append_sheet(
@@ -390,12 +293,18 @@ router.get('/export-excel', async (req, res) => {
   res.send(buffer)
 })
 
-router.get('/debug', (req, res) => {
+router.get('/debug', async (req, res) => {
+  const { safeMonth, start, end } = getMonthRange(req.query.month)
+  const orders = await getOrders(start, end)
+
   res.json({
-    VERSION: 'FINANCE V99',
-    FECHA: new Date().toISOString(),
-    MENSAJE: 'SI VES ESTO, RENDER ESTA EJECUTANDO EL CODIGO NUEVO',
-    SUPABASE_URL: process.env.SUPABASE_URL
+    VERSION: 'FINANCE TEMP ORDERS V1',
+    month: safeMonth,
+    start,
+    end,
+    ordersCount: orders.length,
+    sampleOrder: orders[0] || null,
+    supabaseUrl: process.env.SUPABASE_URL
   })
 })
 
