@@ -25,13 +25,85 @@ const productCosts = [
   { product_name: 'American Fries', final_cost: 2758 },
   { product_name: 'Cheese Fries', final_cost: 2330 },
   { product_name: 'Papas fritas', final_cost: 1100 },
-  { product_name: 'Papas Fritas clásicas', final_cost: 1100 },
   { product_name: 'Aros de Cebolla', final_cost: 1438 },
   { product_name: 'Te o Café', final_cost: 400 },
   { product_name: 'Bebida en Lata 330cc', final_cost: 915 },
-  { product_name: 'Bebida lata', final_cost: 915 },
-  { product_name: 'Bebida en Lata', final_cost: 915 }
+  { product_name: 'Cheedar', final_cost: 450 },
+  { product_name: 'Ingredientes especiales', final_cost: 500 },
+  { product_name: 'Arma tu Combo', final_cost: 1100 }
 ]
+
+const productAliases = {
+  'american burger': 'American Burger',
+  'american burger.': 'American Burger',
+
+  'bacon cheese burger': 'Bacon Cheese Burger',
+  'bacon cheese burger.': 'Bacon Cheese Burger',
+
+  'cheese burger': 'Cheese Burger',
+  'cheese burger.': 'Cheese Burger',
+
+  'bbq burger': 'BBQ Burger',
+  'bbq burger.': 'BBQ Burger',
+
+  'california burger': 'California Burger',
+  'california burger.': 'California Burger',
+
+  'crispy burger': 'Crispy Burger',
+  'crispy burger.': 'Crispy Burger',
+
+  'veggie burger': 'Veggie Burger',
+  'veggie burger.': 'Veggie Burger',
+
+  'oklahoma burger': 'Oklahoma Burger',
+  'oklahoma burger.': 'Oklahoma Burger',
+
+  'buffalo burger': 'Buffalo Burger',
+  'bufalo burger': 'Buffalo Burger',
+  'búfalo burger': 'Buffalo Burger',
+  'búfalo burger.': 'Buffalo Burger',
+  'bufalo burger.': 'Buffalo Burger',
+
+  'alitas bbq': 'Alitas BBQ',
+  'alitas bbq.': 'Alitas BBQ',
+
+  'alitas crispy': 'Alitas Crispy',
+  'alitas crispy.': 'Alitas Crispy',
+
+  'crispy tenders': 'Crispy Tenders',
+  'crispy tenders.': 'Crispy Tenders',
+
+  'american fries': 'American Fries',
+  'american fries.': 'American Fries',
+
+  'cheese fries': 'Cheese Fries',
+  'cheese fries.': 'Cheese Fries',
+
+  'papas fritas': 'Papas fritas',
+  'papas fritas.': 'Papas fritas',
+  'papas fritas clasicas': 'Papas fritas',
+  'papas fritas clásicas': 'Papas fritas',
+
+  'aros de cebolla': 'Aros de Cebolla',
+  'aros de cebolla.': 'Aros de Cebolla',
+
+  'te o cafe': 'Te o Café',
+  'te o café': 'Te o Café',
+
+  'bebida lata': 'Bebida en Lata 330cc',
+  'bebida en lata': 'Bebida en Lata 330cc',
+  'bebida en lata 330cc': 'Bebida en Lata 330cc',
+  'bebida lata 330cc': 'Bebida en Lata 330cc',
+
+  'cheedar': 'Cheedar',
+  'cheddar': 'Cheedar',
+
+  'ingredientes especiales': 'Ingredientes especiales',
+  'ingredientes especiales.': 'Ingredientes especiales',
+
+  'arma tu combo': 'Arma tu Combo',
+  'arma tu combo.': 'Arma tu Combo'
+}
 
 const numberValue = (value) => {
   const n = Number(value)
@@ -42,8 +114,15 @@ const normalize = (value) => {
   return String(value || '')
     .trim()
     .toLowerCase()
+    .replace(/\.$/, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+const canonicalName = (name) => {
+  const raw = String(name || '').trim()
+  const normalized = normalize(raw)
+  return productAliases[normalized] || raw.replace(/\.$/, '').trim()
 }
 
 const getMonthRange = (month) => {
@@ -142,17 +221,18 @@ const calculateFinance = async (month) => {
   let totalVariableCost = 0
 
   for (const item of orderItems) {
-    const name = itemName(item)
+    const originalName = itemName(item)
+    const cleanName = canonicalName(originalName)
     const qty = itemQuantity(item)
     const saleTotal = itemSaleTotal(item)
 
-    const productCost = productCostMap.get(normalize(name))
+    const productCost = productCostMap.get(normalize(cleanName))
     const finalCost = productCost ? numberValue(productCost.final_cost) : 0
     const costTotal = finalCost * qty
 
     totalVariableCost += costTotal
 
-    const key = name || 'Producto sin nombre'
+    const key = cleanName || 'Producto sin nombre'
 
     if (!profitabilityMap.has(key)) {
       profitabilityMap.set(key, {
@@ -359,7 +439,7 @@ router.get('/debug', async (req, res) => {
   const orderItems = await getOrderItemsByOrders(orderIds)
 
   res.json({
-    VERSION: 'FINANCE ORDER_ITEMS V2',
+    VERSION: 'FINANCE ALIASES V3',
     month: safeMonth,
     start,
     end,
