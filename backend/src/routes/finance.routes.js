@@ -4,6 +4,8 @@ import { supabase } from '../config/supabase.js'
 
 const router = express.Router()
 
+const db = supabase.schema('public')
+
 const IVA_RATE_DEFAULT = 0.19
 
 const numberValue = (value) => {
@@ -21,7 +23,9 @@ const getMonthRange = (month) => {
 }
 
 const getSettings = async () => {
-  const { data } = await supabase.from('finance_settings').select('*')
+  const { data, error } = await db.from('finance_settings').select('*')
+  if (error) throw error
+
   const settings = {}
 
   for (const row of data || []) {
@@ -36,7 +40,7 @@ const getSettings = async () => {
 }
 
 const getOrders = async (start, end) => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('orders')
     .select('*')
     .gte('created_at', start)
@@ -48,7 +52,7 @@ const getOrders = async (start, end) => {
 }
 
 const getOrderItems = async (start, end) => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('order_items')
     .select('*')
     .gte('created_at', start)
@@ -59,7 +63,7 @@ const getOrderItems = async (start, end) => {
 }
 
 const getFixedCosts = async (month) => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('finance_fixed_costs')
     .select('*')
     .eq('month', month)
@@ -70,7 +74,7 @@ const getFixedCosts = async (month) => {
 }
 
 const getProductCosts = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('finance_product_costs')
     .select('*')
     .eq('active', true)
@@ -151,13 +155,16 @@ const calculateFinance = async (month) => {
     row.margen = row.ventas > 0 ? row.contribucion / row.ventas : 0
   }
 
-  const ivaCreditEstimated = totalVariableCost - (totalVariableCost / (1 + settings.ivaRate))
+  const ivaCreditEstimated =
+    totalVariableCost - totalVariableCost / (1 + settings.ivaRate)
+
   const ivaToPayEstimated = Math.max(ivaDebit - ivaCreditEstimated, 0)
 
   const grossProfit = totalSales - totalVariableCost
   const operatingProfit = grossProfit - totalFixedCosts
   const averageMargin = totalSales > 0 ? grossProfit / totalSales : 0
-  const breakEvenMonthly = averageMargin > 0 ? totalFixedCosts / averageMargin : 0
+  const breakEvenMonthly =
+    averageMargin > 0 ? totalFixedCosts / averageMargin : 0
   const breakEvenDaily = breakEvenMonthly / settings.workingDays
 
   const status =
@@ -184,7 +191,10 @@ const calculateFinance = async (month) => {
       breakEvenMonthly,
       breakEvenDaily,
       targetProfit: settings.targetProfit,
-      salesForTargetProfit: averageMargin > 0 ? (totalFixedCosts + settings.targetProfit) / averageMargin : 0,
+      salesForTargetProfit:
+        averageMargin > 0
+          ? (totalFixedCosts + settings.targetProfit) / averageMargin
+          : 0,
       status
     },
     fixedCosts,
@@ -212,19 +222,30 @@ router.post('/fixed-costs', async (req, res) => {
     return res.status(400).json({ message: 'Debe enviar month y costs[]' })
   }
 
-  await supabase
+  const { error: deleteError } = await db
     .from('finance_fixed_costs')
     .delete()
     .eq('month', month)
 
-  const rows = costs.map((item) => ({
-    month,
-    concept: item.concept,
-    amount: numberValue(item.amount),
-    notes: item.notes || null
-  }))
+  if (deleteError) throw deleteError
 
-  const { data, error } = await supabase
+  const rows = costs
+    .filter((item) => item?.concept)
+    .map((item) => ({
+      month,
+      concept: item.concept,
+      amount: numberValue(item.amount),
+      notes: item.notes || null
+    }))
+
+  if (rows.length === 0) {
+    return res.json({
+      message: 'Costos fijos guardados correctamente',
+      data: []
+    })
+  }
+
+  const { data, error } = await db
     .from('finance_fixed_costs')
     .insert(rows)
     .select()
@@ -249,15 +270,17 @@ router.post('/product-costs', async (req, res) => {
     return res.status(400).json({ message: 'Debe enviar products[]' })
   }
 
-  const rows = products.map((p) => ({
-    product_name: p.product_name,
-    sale_price: numberValue(p.sale_price),
-    final_cost: numberValue(p.final_cost),
-    category: p.category || null,
-    active: p.active !== false
-  }))
+  const rows = products
+    .filter((p) => p?.product_name)
+    .map((p) => ({
+      product_name: p.product_name,
+      sale_price: numberValue(p.sale_price),
+      final_cost: numberValue(p.final_cost),
+      category: p.category || null,
+      active: p.active !== false
+    }))
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('finance_product_costs')
     .upsert(rows, { onConflict: 'product_name' })
     .select()
