@@ -19,6 +19,7 @@ import Reports from './pages/Reports/Reports'
 import Users from './pages/Users/Users'
 import BusinessSettings from './pages/Settings/BusinessSettings'
 import Diagnostics from './pages/Diagnostics/Diagnostics'
+import Finance from './pages/Finance/Finance'
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           <Route path="/clientes" element={<ProtectedRoute roles={['cajero', 'admin']}><Customers /></ProtectedRoute>} />
           <Route path="/pedidos" element={<ProtectedRoute roles={['cajero', 'admin']}><Orders /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reports /></ProtectedRoute>} />
+          <Route path="/finanzas" element={<ProtectedRoute roles={['admin']}><Finance /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute roles={['admin']}><Users /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute roles={['admin']}><BusinessSettings /></ProtectedRoute>} />
           <Route path="/diagnostico" element={<ProtectedRoute roles={['admin']}><Diagnostics /></ProtectedRoute>} />
