@@ -4,6 +4,8 @@ import { supabase } from '../config/supabase.js'
 
 const router = express.Router()
 
+const db = supabase.schema('public')
+
 const IVA_RATE_DEFAULT = 0.19
 
 const numberValue = (value) => {
@@ -21,7 +23,9 @@ const getMonthRange = (month) => {
 }
 
 const getSettings = async () => {
-  const { data, error } = await supabase.rpc('finance_get_settings')
+  const { data, error } = await db
+    .from('finance_settings')
+    .select('*')
 
   if (error) throw error
 
@@ -39,23 +43,29 @@ const getSettings = async () => {
 }
 
 const getFixedCosts = async (month) => {
-  const { data, error } = await supabase.rpc('finance_get_fixed_costs', {
-    p_month: month
-  })
+  const { data, error } = await db
+    .from('finance_fixed_costs')
+    .select('*')
+    .eq('month', month)
+    .order('concept')
 
   if (error) throw error
   return data || []
 }
 
 const getProductCosts = async () => {
-  const { data, error } = await supabase.rpc('finance_get_product_costs')
+  const { data, error } = await db
+    .from('finance_product_costs')
+    .select('*')
+    .eq('active', true)
+    .order('product_name')
 
   if (error) throw error
   return data || []
 }
 
 const getOrders = async (start, end) => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('orders')
     .select('*')
     .gte('created_at', start)
@@ -67,7 +77,7 @@ const getOrders = async (start, end) => {
 }
 
 const getOrderItems = async (start, end) => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('order_items')
     .select('*')
     .gte('created_at', start)
@@ -240,6 +250,13 @@ router.post('/fixed-costs', async (req, res) => {
     })
   }
 
+  const { error: deleteError } = await db
+    .from('finance_fixed_costs')
+    .delete()
+    .eq('month', month)
+
+  if (deleteError) throw deleteError
+
   const rows = costs
     .filter((item) => item?.concept)
     .map((item) => ({
@@ -249,16 +266,23 @@ router.post('/fixed-costs', async (req, res) => {
       notes: item.notes || null
     }))
 
-  const { data, error } = await supabase.rpc('finance_save_fixed_costs', {
-    p_month: month,
-    p_costs: rows
-  })
+  if (rows.length === 0) {
+    return res.json({
+      message: 'Costos fijos guardados correctamente',
+      data: []
+    })
+  }
+
+  const { data, error } = await db
+    .from('finance_fixed_costs')
+    .insert(rows)
+    .select()
 
   if (error) throw error
 
   res.json({
     message: 'Costos fijos guardados correctamente',
-    data: data || []
+    data
   })
 })
 
@@ -286,15 +310,16 @@ router.post('/product-costs', async (req, res) => {
       active: product.active !== false
     }))
 
-  const { data, error } = await supabase.rpc('finance_save_product_costs', {
-    p_products: rows
-  })
+  const { data, error } = await db
+    .from('finance_product_costs')
+    .upsert(rows, { onConflict: 'product_name' })
+    .select()
 
   if (error) throw error
 
   res.json({
     message: 'Costos de productos guardados correctamente',
-    data: data || []
+    data
   })
 })
 
@@ -372,11 +397,19 @@ router.get('/export-excel', async (req, res) => {
 })
 
 router.get('/debug', async (req, res) => {
-  const settings = await supabase.rpc('finance_get_settings')
-  const fixed = await supabase.rpc('finance_get_fixed_costs', {
-    p_month: req.query.month || new Date().toISOString().slice(0, 7)
-  })
-  const products = await supabase.rpc('finance_get_product_costs')
+  const settings = await db
+    .from('finance_settings')
+    .select('*')
+
+  const fixed = await db
+    .from('finance_fixed_costs')
+    .select('*')
+    .limit(5)
+
+  const products = await db
+    .from('finance_product_costs')
+    .select('*')
+    .limit(5)
 
   res.json({
     supabaseUrl: process.env.SUPABASE_URL,
