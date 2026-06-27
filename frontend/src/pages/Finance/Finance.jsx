@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import Sidebar from '../../components/Sidebar'
+import Navbar from '../../components/Navbar'
 import { financeService } from '../../services/financeService'
 
 const defaultCosts = [
@@ -17,45 +19,39 @@ const defaultCosts = [
   'Otros gastos'
 ]
 
-const formatMoney = (value) => {
-  const n = Number(value || 0)
-
-  return new Intl.NumberFormat('es-CL', {
+const money = (value) =>
+  new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: 'CLP',
     maximumFractionDigits: 0
-  }).format(n)
-}
+  }).format(Number(value || 0))
 
-const formatPercent = (value) => {
-  const n = Number(value || 0)
-  return `${(n * 100).toFixed(1)}%`
-}
+const percent = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`
 
-const currentMonth = () => {
-  return new Date().toISOString().slice(0, 7)
-}
+const currentMonth = () => new Date().toISOString().slice(0, 7)
 
-function Finance() {
+const Finance = () => {
   const [month, setMonth] = useState(currentMonth())
   const [summary, setSummary] = useState(null)
   const [fixedCosts, setFixedCosts] = useState([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   const loadData = async () => {
     setLoading(true)
     setError('')
+    setMessage('')
 
     try {
       const data = await financeService.getSummary(month)
       setSummary(data)
 
-      const currentCosts = data.fixedCosts || []
+      const costs = data.fixedCosts || []
 
-      if (currentCosts.length > 0) {
-        setFixedCosts(currentCosts)
+      if (costs.length > 0) {
+        setFixedCosts(costs)
       } else {
         setFixedCosts(
           defaultCosts.map((concept) => ({
@@ -78,15 +74,36 @@ function Finance() {
 
   const totals = summary?.summary || {}
 
-  const statusColor = useMemo(() => {
-    if (totals.status === 'SOBRE EQUILIBRIO') return '#16a34a'
-    if (totals.status === 'CERCA DEL EQUILIBRIO') return '#ca8a04'
-    return '#dc2626'
+  const statusData = useMemo(() => {
+    if (totals.status === 'SOBRE EQUILIBRIO') {
+      return {
+        text: 'SOBRE EQUILIBRIO',
+        color: 'text-green-600',
+        border: 'border-green-500',
+        bg: 'bg-green-100'
+      }
+    }
+
+    if (totals.status === 'CERCA DEL EQUILIBRIO') {
+      return {
+        text: 'CERCA DEL EQUILIBRIO',
+        color: 'text-yellow-600',
+        border: 'border-yellow-400',
+        bg: 'bg-yellow-100'
+      }
+    }
+
+    return {
+      text: totals.status || 'SIN DATOS',
+      color: 'text-red-600',
+      border: 'border-red-600',
+      bg: 'bg-red-100'
+    }
   }, [totals.status])
 
   const updateCost = (index, field, value) => {
-    setFixedCosts((prev) => {
-      const copy = [...prev]
+    setFixedCosts((current) => {
+      const copy = [...current]
 
       copy[index] = {
         ...copy[index],
@@ -98,8 +115,8 @@ function Finance() {
   }
 
   const addCost = () => {
-    setFixedCosts((prev) => [
-      ...prev,
+    setFixedCosts((current) => [
+      ...current,
       {
         concept: '',
         amount: 0,
@@ -111,13 +128,14 @@ function Finance() {
   const saveCosts = async () => {
     setSaving(true)
     setError('')
+    setMessage('')
 
     try {
       await financeService.saveFixedCosts(month, fixedCosts)
+      setMessage('Costos fijos guardados correctamente')
       await loadData()
-      alert('Costos fijos guardados correctamente')
     } catch (err) {
-      setError(err.message || 'No se pudieron guardar los costos')
+      setError(err.message || 'No se pudieron guardar los costos fijos')
     } finally {
       setSaving(false)
     }
@@ -128,132 +146,178 @@ function Finance() {
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={heroStyle}>
-        <div style={brandStyle}>AMERICAN BURGER POS</div>
-        <h1 style={titleStyle}>📊 Finanzas</h1>
-        <p style={subtitleStyle}>
-          Punto de equilibrio, IVA, costos fijos, rentabilidad y respaldo Excel.
-        </p>
-      </div>
+    <div className="page-container">
+      <Sidebar />
 
-      <div style={toolbarStyle}>
-        <label style={{ fontWeight: 700 }}>Mes:</label>
+      <div className="page-content">
+        <Navbar title="Finanzas" />
 
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          style={inputTopStyle}
-        />
+        <div className="main-content space-y-6 bg-gray-100">
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-5 py-4 rounded-xl font-bold">
+              {error}
+            </div>
+          )}
 
-        <button onClick={loadData} style={buttonStyle}>
-          Actualizar
-        </button>
+          {message && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-5 py-4 rounded-xl font-bold">
+              {message}
+            </div>
+          )}
 
-        <button
-          onClick={downloadExcel}
-          style={{ ...buttonStyle, background: '#16a34a' }}
-        >
-          📥 Descargar respaldo Excel
-        </button>
-      </div>
+          <div className="bg-black text-white rounded-2xl shadow-lg p-6 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <div>
+              <p className="text-yellow-400 font-bold tracking-wide">
+                AMERICAN BURGER POS
+              </p>
 
-      {error && <div style={errorStyle}>{error}</div>}
+              <h1 className="text-3xl font-black mt-1">
+                📊 Finanzas
+              </h1>
 
-      {loading ? (
-        <div style={cardStyle}>Cargando módulo Finanzas...</div>
-      ) : (
-        <>
-          <div style={gridStyle}>
-            <Kpi title="Ventas del mes" value={formatMoney(totals.totalSales)} />
-            <Kpi title="Venta neta" value={formatMoney(totals.netSales)} />
-            <Kpi title="IVA estimado" value={formatMoney(totals.ivaToPayEstimated)} />
-            <Kpi title="Costo variable" value={formatMoney(totals.totalVariableCost)} />
-            <Kpi title="Costos fijos" value={formatMoney(totals.totalFixedCosts)} />
-            <Kpi title="Utilidad operativa" value={formatMoney(totals.operatingProfit)} />
-            <Kpi title="Margen promedio" value={formatPercent(totals.averageMargin)} />
-            <Kpi title="Punto equilibrio" value={formatMoney(totals.breakEvenMonthly)} />
-          </div>
-
-          <div
-            style={{
-              ...cardStyle,
-              borderLeft: `10px solid ${statusColor}`,
-              marginTop: 20
-            }}
-          >
-            <h2 style={{ marginTop: 0 }}>Estado del negocio</h2>
-
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 900,
-                color: statusColor
-              }}
-            >
-              {totals.status || 'SIN DATOS'}
+              <p className="text-gray-300 mt-1">
+                Punto de equilibrio, IVA, costos fijos, rentabilidad y respaldo Excel.
+              </p>
             </div>
 
-            <p>
-              Meta diaria de equilibrio aproximada:{' '}
-              <strong>{formatMoney(totals.breakEvenDaily)}</strong>
-            </p>
-
-            <p>
-              Ventas necesarias para meta de utilidad:{' '}
-              <strong>{formatMoney(totals.salesForTargetProfit)}</strong>
-            </p>
+            <div className={`px-5 py-3 rounded-xl font-black text-lg ${statusData.bg} ${statusData.color}`}>
+              {statusData.text}
+            </div>
           </div>
 
-          <div style={{ ...cardStyle, marginTop: 20 }}>
-            <h2>Costos fijos mensuales</h2>
+          <div className="bg-white rounded-2xl shadow-md p-5 flex flex-col xl:flex-row xl:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <label className="font-black">Mes:</label>
 
-            <p>
-              Esta es la única parte que debes cargar manualmente una vez al mes.
+              <input
+                type="month"
+                className="input max-w-[220px]"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+              />
+            </div>
+
+            <button
+              onClick={loadData}
+              disabled={loading}
+              className="bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50"
+            >
+              {loading ? 'Cargando...' : 'Actualizar'}
+            </button>
+
+            <button
+              onClick={downloadExcel}
+              className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-bold"
+            >
+              📥 Descargar respaldo Excel
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+            <Kpi title="Ventas del mes" value={money(totals.totalSales)} border="border-yellow-400" />
+            <Kpi title="Venta neta" value={money(totals.netSales)} border="border-black" />
+            <Kpi title="IVA estimado" value={money(totals.ivaToPayEstimated)} border="border-blue-500" />
+            <Kpi title="Costo variable" value={money(totals.totalVariableCost)} border="border-orange-500" />
+            <Kpi title="Costos fijos" value={money(totals.totalFixedCosts)} border="border-red-500" />
+            <Kpi title="Utilidad operativa" value={money(totals.operatingProfit)} border="border-green-500" />
+            <Kpi title="Margen promedio" value={percent(totals.averageMargin)} border="border-purple-500" />
+            <Kpi title="Punto equilibrio" value={money(totals.breakEvenMonthly)} border="border-gray-500" />
+          </div>
+
+          <div className={`bg-white rounded-2xl shadow-md p-6 border-l-8 ${statusData.border}`}>
+            <h2 className="text-2xl font-black">Estado del negocio</h2>
+
+            <p className={`text-3xl font-black mt-3 ${statusData.color}`}>
+              {statusData.text}
             </p>
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={tableStyle}>
-                <thead>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-5">
+              <InfoBox
+                title="Meta diaria de equilibrio"
+                value={money(totals.breakEvenDaily)}
+              />
+
+              <InfoBox
+                title="Ventas para meta de utilidad"
+                value={money(totals.salesForTargetProfit)}
+              />
+
+              <InfoBox
+                title="Meta utilidad mensual"
+                value={money(totals.targetProfit)}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
+              <div>
+                <h2 className="text-2xl font-black">Costos fijos mensuales</h2>
+                <p className="text-gray-500">
+                  Esta es la única parte que debes cargar manualmente una vez al mes.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={addCost}
+                  className="bg-gray-100 hover:bg-gray-200 text-black px-5 py-3 rounded-xl font-bold"
+                >
+                  + Agregar gasto
+                </button>
+
+                <button
+                  onClick={saveCosts}
+                  disabled={saving}
+                  className="bg-black text-yellow-400 px-5 py-3 rounded-xl font-bold disabled:opacity-50"
+                >
+                  {saving ? 'Guardando...' : 'Guardar costos fijos'}
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-left">
+                <thead className="bg-black text-yellow-400">
                   <tr>
-                    <th style={thStyle}>Concepto</th>
-                    <th style={thStyle}>Monto mensual</th>
-                    <th style={thStyle}>Notas</th>
+                    <th className="py-4 px-4">Concepto</th>
+                    <th className="px-4">Monto mensual</th>
+                    <th className="px-4">Notas</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {fixedCosts.map((cost, index) => (
-                    <tr key={cost.id || index}>
-                      <td style={tdStyle}>
+                    <tr key={cost.id || index} className="border-b hover:bg-yellow-50">
+                      <td className="py-3 px-4">
                         <input
+                          className="input"
                           value={cost.concept || ''}
-                          onChange={(e) =>
-                            updateCost(index, 'concept', e.target.value)
+                          onChange={(event) =>
+                            updateCost(index, 'concept', event.target.value)
                           }
-                          style={inputStyle}
                         />
                       </td>
 
-                      <td style={tdStyle}>
+                      <td className="px-4">
                         <input
+                          className="input"
                           type="number"
+                          min="0"
                           value={cost.amount || 0}
-                          onChange={(e) =>
-                            updateCost(index, 'amount', e.target.value)
+                          onChange={(event) =>
+                            updateCost(index, 'amount', event.target.value)
                           }
-                          style={inputStyle}
                         />
                       </td>
 
-                      <td style={tdStyle}>
+                      <td className="px-4">
                         <input
+                          className="input"
                           value={cost.notes || ''}
-                          onChange={(e) =>
-                            updateCost(index, 'notes', e.target.value)
+                          onChange={(event) =>
+                            updateCost(index, 'notes', event.target.value)
                           }
-                          style={inputStyle}
                         />
                       </td>
                     </tr>
@@ -261,185 +325,89 @@ function Finance() {
                 </tbody>
               </table>
             </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button
-                onClick={addCost}
-                style={{ ...buttonStyle, background: '#374151' }}
-              >
-                + Agregar gasto
-              </button>
-
-              <button onClick={saveCosts} disabled={saving} style={buttonStyle}>
-                {saving ? 'Guardando...' : 'Guardar costos fijos'}
-              </button>
-            </div>
           </div>
 
-          <div style={{ ...cardStyle, marginTop: 20 }}>
-            <h2>Rentabilidad por producto</h2>
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <h2 className="text-2xl font-black mb-1">
+              Rentabilidad por producto
+            </h2>
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={tableStyle}>
-                <thead>
+            <p className="text-gray-500 mb-5">
+              Calculada desde las ventas del POS y los costos finales cargados.
+            </p>
+
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-left">
+                <thead className="bg-black text-yellow-400">
                   <tr>
-                    <th style={thStyle}>Producto</th>
-                    <th style={thStyle}>Cantidad</th>
-                    <th style={thStyle}>Ventas</th>
-                    <th style={thStyle}>Costo</th>
-                    <th style={thStyle}>Contribución</th>
-                    <th style={thStyle}>Margen</th>
+                    <th className="py-4 px-4">Producto</th>
+                    <th className="px-4">Cantidad</th>
+                    <th className="px-4">Ventas</th>
+                    <th className="px-4">Costo</th>
+                    <th className="px-4">Contribución</th>
+                    <th className="px-4">Margen</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {(summary?.profitability || []).map((row, index) => (
-                    <tr key={index}>
-                      <td style={tdStyle}>{row.producto}</td>
-                      <td style={tdStyle}>{row.cantidad}</td>
-                      <td style={tdStyle}>{formatMoney(row.ventas)}</td>
-                      <td style={tdStyle}>{formatMoney(row.costo)}</td>
-                      <td style={tdStyle}>{formatMoney(row.contribucion)}</td>
-                      <td style={tdStyle}>{formatPercent(row.margen)}</td>
-                    </tr>
-                  ))}
-
-                  {(summary?.profitability || []).length === 0 && (
+                  {(summary?.profitability || []).length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ ...tdStyle, textAlign: 'center', padding: 20 }}>
+                      <td colSpan="6" className="text-center text-gray-500 py-12">
                         No hay ventas con detalle de productos para este mes.
                       </td>
                     </tr>
+                  ) : (
+                    summary.profitability.map((row, index) => (
+                      <tr key={index} className="border-b hover:bg-yellow-50">
+                        <td className="py-4 px-4 font-bold">{row.producto}</td>
+                        <td className="px-4">{row.cantidad}</td>
+                        <td className="px-4">{money(row.ventas)}</td>
+                        <td className="px-4">{money(row.costo)}</td>
+                        <td className="px-4 font-black">{money(row.contribucion)}</td>
+                        <td className="px-4">{percent(row.margen)}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
           </div>
-        </>
-      )}
+
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <h2 className="text-2xl font-black mb-5">Resumen tributario estimado</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <InfoBox title="IVA débito" value={money(totals.ivaDebit)} />
+              <InfoBox title="IVA crédito estimado" value={money(totals.ivaCreditEstimated)} />
+              <InfoBox title="IVA a pagar estimado" value={money(totals.ivaToPayEstimated)} />
+            </div>
+
+            <p className="text-gray-500 mt-4">
+              Este cálculo es referencial para gestión interna. La declaración oficial debe revisarse con el Registro de Compras y Ventas del SII.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-function Kpi({ title, value }) {
+const Kpi = ({ title, value, border }) => {
   return (
-    <div style={cardStyle}>
-      <div style={kpiTitleStyle}>{title}</div>
-      <div style={kpiValueStyle}>{value}</div>
+    <div className={`bg-white rounded-2xl shadow-md p-5 border-l-8 ${border}`}>
+      <p className="text-gray-500 font-bold">{title}</p>
+      <h2 className="text-3xl font-black mt-2">{value}</h2>
     </div>
   )
 }
 
-const pageStyle = {
-  padding: 24,
-  background: '#f5f5f5',
-  minHeight: '100vh'
-}
-
-const heroStyle = {
-  background: '#000',
-  color: '#fff',
-  borderRadius: 18,
-  padding: 24,
-  marginBottom: 24
-}
-
-const brandStyle = {
-  color: '#FFC72C',
-  fontWeight: 800
-}
-
-const titleStyle = {
-  margin: '8px 0',
-  fontSize: 34
-}
-
-const subtitleStyle = {
-  margin: 0,
-  opacity: 0.85
-}
-
-const toolbarStyle = {
-  display: 'flex',
-  gap: 12,
-  alignItems: 'center',
-  marginBottom: 20,
-  flexWrap: 'wrap'
-}
-
-const cardStyle = {
-  background: '#fff',
-  borderRadius: 16,
-  padding: 18,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.08)'
-}
-
-const gridStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-  gap: 16
-}
-
-const buttonStyle = {
-  border: 0,
-  borderRadius: 10,
-  padding: '11px 16px',
-  background: '#DA291C',
-  color: '#fff',
-  fontWeight: 800,
-  cursor: 'pointer'
-}
-
-const tableStyle = {
-  width: '100%',
-  borderCollapse: 'collapse'
-}
-
-const thStyle = {
-  background: '#DA291C',
-  color: '#fff',
-  padding: 10,
-  textAlign: 'left',
-  fontSize: 14
-}
-
-const tdStyle = {
-  padding: 8,
-  borderBottom: '1px solid #eee'
-}
-
-const inputStyle = {
-  width: '100%',
-  padding: 9,
-  border: '1px solid #ddd',
-  borderRadius: 8
-}
-
-const inputTopStyle = {
-  padding: 10,
-  borderRadius: 10,
-  border: '1px solid #ddd'
-}
-
-const errorStyle = {
-  background: '#fee2e2',
-  color: '#991b1b',
-  padding: 14,
-  borderRadius: 12,
-  marginBottom: 18,
-  fontWeight: 700
-}
-
-const kpiTitleStyle = {
-  color: '#666',
-  fontWeight: 700,
-  fontSize: 14
-}
-
-const kpiValueStyle = {
-  fontSize: 25,
-  fontWeight: 900,
-  marginTop: 8
+const InfoBox = ({ title, value }) => {
+  return (
+    <div className="border rounded-xl p-5 bg-gray-50">
+      <p className="text-gray-500 font-bold">{title}</p>
+      <h3 className="text-2xl font-black mt-2">{value}</h3>
+    </div>
+  )
 }
 
 export default Finance
