@@ -4,8 +4,6 @@ import { supabase } from '../config/supabase.js'
 
 const router = express.Router()
 
-const db = supabase.schema('public')
-
 const IVA_RATE_DEFAULT = 0.19
 
 const numberValue = (value) => {
@@ -23,7 +21,8 @@ const getMonthRange = (month) => {
 }
 
 const getSettings = async () => {
-  const { data, error } = await db.from('finance_settings').select('*')
+  const { data, error } = await supabase.rpc('finance_get_settings')
+
   if (error) throw error
 
   const settings = {}
@@ -39,8 +38,24 @@ const getSettings = async () => {
   }
 }
 
+const getFixedCosts = async (month) => {
+  const { data, error } = await supabase.rpc('finance_get_fixed_costs', {
+    p_month: month
+  })
+
+  if (error) throw error
+  return data || []
+}
+
+const getProductCosts = async () => {
+  const { data, error } = await supabase.rpc('finance_get_product_costs')
+
+  if (error) throw error
+  return data || []
+}
+
 const getOrders = async (start, end) => {
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('orders')
     .select('*')
     .gte('created_at', start)
@@ -52,35 +67,13 @@ const getOrders = async (start, end) => {
 }
 
 const getOrderItems = async (start, end) => {
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('order_items')
     .select('*')
     .gte('created_at', start)
     .lt('created_at', end)
 
   if (error) return []
-  return data || []
-}
-
-const getFixedCosts = async (month) => {
-  const { data, error } = await db
-    .from('finance_fixed_costs')
-    .select('*')
-    .eq('month', month)
-    .order('concept')
-
-  if (error) throw error
-  return data || []
-}
-
-const getProductCosts = async () => {
-  const { data, error } = await db
-    .from('finance_product_costs')
-    .select('*')
-    .eq('active', true)
-    .order('product_name')
-
-  if (error) throw error
   return data || []
 }
 
@@ -105,11 +98,18 @@ const calculateFinance = async (month) => {
   const productCosts = await getProductCosts()
 
   const productCostMap = new Map()
-  for (const p of productCosts) {
-    productCostMap.set(String(p.product_name).trim().toLowerCase(), p)
+
+  for (const product of productCosts) {
+    productCostMap.set(
+      String(product.product_name || '').trim().toLowerCase(),
+      product
+    )
   }
 
-  const totalSales = orders.reduce((sum, order) => sum + orderTotal(order), 0)
+  const totalSales = orders.reduce((sum, order) => {
+    return sum + orderTotal(order)
+  }, 0)
+
   const netSales = totalSales / (1 + settings.ivaRate)
   const ivaDebit = totalSales - netSales
 
@@ -125,20 +125,30 @@ const calculateFinance = async (month) => {
       item.product_name ||
       item.name ||
       item.description ||
+      item.name_snapshot ||
       ''
     ).trim()
 
     const qty = numberValue(item.quantity || item.qty || 1)
-    const itemTotal = numberValue(item.total || item.subtotal || item.price || 0)
+
+    const itemTotal = numberValue(
+      item.total ||
+      item.subtotal ||
+      numberValue(item.unit_price || item.price) * qty ||
+      0
+    )
+
     const productCost = productCostMap.get(name.toLowerCase())
     const finalCost = productCost ? numberValue(productCost.final_cost) : 0
     const costTotal = finalCost * qty
 
     totalVariableCost += costTotal
 
-    if (!profitabilityMap.has(name)) {
-      profitabilityMap.set(name, {
-        producto: name,
+    const key = name || 'Producto sin nombre'
+
+    if (!profitabilityMap.has(key)) {
+      profitabilityMap.set(key, {
+        producto: key,
         cantidad: 0,
         ventas: 0,
         costo: 0,
@@ -147,7 +157,8 @@ const calculateFinance = async (month) => {
       })
     }
 
-    const row = profitabilityMap.get(name)
+    const row = profitabilityMap.get(key)
+
     row.cantidad += qty
     row.ventas += itemTotal
     row.costo += costTotal
@@ -163,16 +174,21 @@ const calculateFinance = async (month) => {
   const grossProfit = totalSales - totalVariableCost
   const operatingProfit = grossProfit - totalFixedCosts
   const averageMargin = totalSales > 0 ? grossProfit / totalSales : 0
+
   const breakEvenMonthly =
     averageMargin > 0 ? totalFixedCosts / averageMargin : 0
-  const breakEvenDaily = breakEvenMonthly / settings.workingDays
+
+  const breakEvenDaily =
+    settings.workingDays > 0 ? breakEvenMonthly / settings.workingDays : 0
 
   const status =
-    totalSales >= breakEvenMonthly
+    totalSales >= breakEvenMonthly && breakEvenMonthly > 0
       ? 'SOBRE EQUILIBRIO'
-      : totalSales >= breakEvenMonthly * 0.85
+      : totalSales >= breakEvenMonthly * 0.85 && breakEvenMonthly > 0
         ? 'CERCA DEL EQUILIBRIO'
-        : 'BAJO EQUILIBRIO'
+        : totalSales > 0
+          ? 'BAJO EQUILIBRIO'
+          : 'SIN DATOS'
 
   return {
     month: safeMonth,
@@ -219,15 +235,10 @@ router.post('/fixed-costs', async (req, res) => {
   const { month, costs } = req.body
 
   if (!month || !Array.isArray(costs)) {
-    return res.status(400).json({ message: 'Debe enviar month y costs[]' })
+    return res.status(400).json({
+      message: 'Debe enviar month y costs[]'
+    })
   }
-
-  const { error: deleteError } = await db
-    .from('finance_fixed_costs')
-    .delete()
-    .eq('month', month)
-
-  if (deleteError) throw deleteError
 
   const rows = costs
     .filter((item) => item?.concept)
@@ -238,23 +249,16 @@ router.post('/fixed-costs', async (req, res) => {
       notes: item.notes || null
     }))
 
-  if (rows.length === 0) {
-    return res.json({
-      message: 'Costos fijos guardados correctamente',
-      data: []
-    })
-  }
-
-  const { data, error } = await db
-    .from('finance_fixed_costs')
-    .insert(rows)
-    .select()
+  const { data, error } = await supabase.rpc('finance_save_fixed_costs', {
+    p_month: month,
+    p_costs: rows
+  })
 
   if (error) throw error
 
   res.json({
     message: 'Costos fijos guardados correctamente',
-    data
+    data: data || []
   })
 })
 
@@ -267,29 +271,30 @@ router.post('/product-costs', async (req, res) => {
   const { products } = req.body
 
   if (!Array.isArray(products)) {
-    return res.status(400).json({ message: 'Debe enviar products[]' })
+    return res.status(400).json({
+      message: 'Debe enviar products[]'
+    })
   }
 
   const rows = products
-    .filter((p) => p?.product_name)
-    .map((p) => ({
-      product_name: p.product_name,
-      sale_price: numberValue(p.sale_price),
-      final_cost: numberValue(p.final_cost),
-      category: p.category || null,
-      active: p.active !== false
+    .filter((product) => product?.product_name)
+    .map((product) => ({
+      product_name: product.product_name,
+      sale_price: numberValue(product.sale_price),
+      final_cost: numberValue(product.final_cost),
+      category: product.category || null,
+      active: product.active !== false
     }))
 
-  const { data, error } = await db
-    .from('finance_product_costs')
-    .upsert(rows, { onConflict: 'product_name' })
-    .select()
+  const { data, error } = await supabase.rpc('finance_save_product_costs', {
+    p_products: rows
+  })
 
   if (error) throw error
 
   res.json({
     message: 'Costos de productos guardados correctamente',
-    data
+    data: data || []
   })
 })
 
@@ -313,6 +318,8 @@ router.get('/export-excel', async (req, res) => {
     ['Margen promedio', result.summary.averageMargin],
     ['Punto equilibrio mensual', result.summary.breakEvenMonthly],
     ['Punto equilibrio diario', result.summary.breakEvenDaily],
+    ['Meta utilidad', result.summary.targetProfit],
+    ['Ventas para meta utilidad', result.summary.salesForTargetProfit],
     ['Estado negocio', result.summary.status]
   ]
 
@@ -324,25 +331,25 @@ router.get('/export-excel', async (req, res) => {
 
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.fixedCosts),
+    XLSX.utils.json_to_sheet(result.fixedCosts || []),
     'Costos Fijos'
   )
 
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.productCosts),
+    XLSX.utils.json_to_sheet(result.productCosts || []),
     'Costos Productos'
   )
 
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.profitability),
+    XLSX.utils.json_to_sheet(result.profitability || []),
     'Rentabilidad'
   )
 
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(result.orders),
+    XLSX.utils.json_to_sheet(result.orders || []),
     'Ventas'
   )
 
@@ -355,12 +362,28 @@ router.get('/export-excel', async (req, res) => {
     'Content-Disposition',
     `attachment; filename="respaldo_finanzas_american_burger_${result.month}.xlsx"`
   )
+
   res.setHeader(
     'Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   )
 
   res.send(buffer)
+})
+
+router.get('/debug', async (req, res) => {
+  const settings = await supabase.rpc('finance_get_settings')
+  const fixed = await supabase.rpc('finance_get_fixed_costs', {
+    p_month: req.query.month || new Date().toISOString().slice(0, 7)
+  })
+  const products = await supabase.rpc('finance_get_product_costs')
+
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL,
+    settings,
+    fixed,
+    products
+  })
 })
 
 export default router
