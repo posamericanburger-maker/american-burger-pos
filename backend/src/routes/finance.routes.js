@@ -25,14 +25,25 @@ const productCosts = [
   { product_name: 'American Fries', final_cost: 2758 },
   { product_name: 'Cheese Fries', final_cost: 2330 },
   { product_name: 'Papas fritas', final_cost: 1100 },
+  { product_name: 'Papas Fritas clásicas', final_cost: 1100 },
   { product_name: 'Aros de Cebolla', final_cost: 1438 },
   { product_name: 'Te o Café', final_cost: 400 },
-  { product_name: 'Bebida en Lata 330cc', final_cost: 915 }
+  { product_name: 'Bebida en Lata 330cc', final_cost: 915 },
+  { product_name: 'Bebida lata', final_cost: 915 },
+  { product_name: 'Bebida en Lata', final_cost: 915 }
 ]
 
 const numberValue = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
+}
+
+const normalize = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 const getMonthRange = (month) => {
@@ -56,6 +67,22 @@ const getOrders = async (start, end) => {
   return data || []
 }
 
+const getOrderItemsByOrders = async (orderIds) => {
+  if (!orderIds.length) return []
+
+  const { data, error } = await supabase
+    .from('order_items')
+    .select('*')
+    .in('order_id', orderIds)
+
+  if (error) {
+    console.error('Error leyendo order_items:', error.message)
+    return []
+  }
+
+  return data || []
+}
+
 const orderTotal = (order) => {
   return numberValue(
     order.total ||
@@ -67,17 +94,44 @@ const orderTotal = (order) => {
   )
 }
 
+const itemName = (item) => {
+  return String(
+    item.product_name ||
+      item.name ||
+      item.description ||
+      item.name_snapshot ||
+      item.product ||
+      ''
+  ).trim()
+}
+
+const itemQuantity = (item) => {
+  return numberValue(item.quantity || item.qty || 1) || 1
+}
+
+const itemSaleTotal = (item) => {
+  const qty = itemQuantity(item)
+
+  return numberValue(
+    item.total ||
+      item.subtotal ||
+      item.line_total ||
+      numberValue(item.unit_price || item.price || item.sale_price) * qty ||
+      0
+  )
+}
+
 const calculateFinance = async (month) => {
   const { safeMonth, start, end } = getMonthRange(month)
+
   const orders = await getOrders(start, end)
+  const orderIds = orders.map((order) => order.id).filter(Boolean)
+  const orderItems = await getOrderItemsByOrders(orderIds)
 
   const productCostMap = new Map()
 
   for (const product of productCosts) {
-    productCostMap.set(
-      String(product.product_name || '').trim().toLowerCase(),
-      product
-    )
+    productCostMap.set(normalize(product.product_name), product)
   }
 
   const totalSales = orders.reduce((sum, order) => {
@@ -87,59 +141,45 @@ const calculateFinance = async (month) => {
   const profitabilityMap = new Map()
   let totalVariableCost = 0
 
-  for (const order of orders) {
-    const items = Array.isArray(order.items) ? order.items : []
+  for (const item of orderItems) {
+    const name = itemName(item)
+    const qty = itemQuantity(item)
+    const saleTotal = itemSaleTotal(item)
 
-    for (const item of items) {
-      const name = String(
-        item.product_name ||
-          item.name ||
-          item.description ||
-          item.name_snapshot ||
-          ''
-      ).trim()
+    const productCost = productCostMap.get(normalize(name))
+    const finalCost = productCost ? numberValue(productCost.final_cost) : 0
+    const costTotal = finalCost * qty
 
-      const qty = numberValue(item.quantity || item.qty || 1)
+    totalVariableCost += costTotal
 
-      const itemTotal = numberValue(
-        item.total ||
-          item.subtotal ||
-          numberValue(item.unit_price || item.price) * qty ||
-          0
-      )
+    const key = name || 'Producto sin nombre'
 
-      const productCost = productCostMap.get(name.toLowerCase())
-      const finalCost = productCost ? numberValue(productCost.final_cost) : 0
-      const costTotal = finalCost * qty
-
-      totalVariableCost += costTotal
-
-      const key = name || 'Producto sin nombre'
-
-      if (!profitabilityMap.has(key)) {
-        profitabilityMap.set(key, {
-          producto: key,
-          cantidad: 0,
-          ventas: 0,
-          costo: 0,
-          contribucion: 0,
-          margen: 0
-        })
-      }
-
-      const row = profitabilityMap.get(key)
-      row.cantidad += qty
-      row.ventas += itemTotal
-      row.costo += costTotal
-      row.contribucion = row.ventas - row.costo
-      row.margen = row.ventas > 0 ? row.contribucion / row.ventas : 0
+    if (!profitabilityMap.has(key)) {
+      profitabilityMap.set(key, {
+        producto: key,
+        cantidad: 0,
+        ventas: 0,
+        costo: 0,
+        contribucion: 0,
+        margen: 0
+      })
     }
+
+    const row = profitabilityMap.get(key)
+
+    row.cantidad += qty
+    row.ventas += saleTotal
+    row.costo += costTotal
+    row.contribucion = row.ventas - row.costo
+    row.margen = row.ventas > 0 ? row.contribucion / row.ventas : 0
   }
 
   const netSales = totalSales / (1 + IVA_RATE)
   const ivaDebit = totalSales - netSales
+
   const ivaCreditEstimated =
     totalVariableCost - totalVariableCost / (1 + IVA_RATE)
+
   const ivaToPayEstimated = Math.max(ivaDebit - ivaCreditEstimated, 0)
 
   const grossProfit = totalSales - totalVariableCost
@@ -197,7 +237,8 @@ const calculateFinance = async (month) => {
     ],
     productCosts,
     profitability: Array.from(profitabilityMap.values()),
-    orders
+    orders,
+    orderItems
   }
 }
 
@@ -265,6 +306,18 @@ router.get('/export-excel', async (req, res) => {
 
   XLSX.utils.book_append_sheet(
     wb,
+    XLSX.utils.json_to_sheet(result.fixedCosts || []),
+    'Costos Fijos'
+  )
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(result.productCosts || []),
+    'Costos Productos'
+  )
+
+  XLSX.utils.book_append_sheet(
+    wb,
     XLSX.utils.json_to_sheet(result.profitability || []),
     'Rentabilidad'
   )
@@ -273,6 +326,12 @@ router.get('/export-excel', async (req, res) => {
     wb,
     XLSX.utils.json_to_sheet(result.orders || []),
     'Ventas'
+  )
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(result.orderItems || []),
+    'Detalle Productos'
   )
 
   const buffer = XLSX.write(wb, {
@@ -296,14 +355,18 @@ router.get('/export-excel', async (req, res) => {
 router.get('/debug', async (req, res) => {
   const { safeMonth, start, end } = getMonthRange(req.query.month)
   const orders = await getOrders(start, end)
+  const orderIds = orders.map((order) => order.id).filter(Boolean)
+  const orderItems = await getOrderItemsByOrders(orderIds)
 
   res.json({
-    VERSION: 'FINANCE TEMP ORDERS V1',
+    VERSION: 'FINANCE ORDER_ITEMS V2',
     month: safeMonth,
     start,
     end,
     ordersCount: orders.length,
+    orderItemsCount: orderItems.length,
     sampleOrder: orders[0] || null,
+    sampleOrderItem: orderItems[0] || null,
     supabaseUrl: process.env.SUPABASE_URL
   })
 })
