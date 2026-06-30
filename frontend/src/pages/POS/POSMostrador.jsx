@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import Sidebar from '../../components/Sidebar'
-import Navbar from '../../components/Navbar'
+import Layout from '../../components/Layout'
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -605,13 +604,8 @@ const POSMostrador = () => {
   }
 
   return (
-    <div className="page-container">
-      <Sidebar />
-
-      <div className="page-content">
-        <Navbar title="POS - Mostrador" />
-
-        <div className="main-content space-y-5">
+    <Layout title="POS - Mostrador">
+      <div className="space-y-5">
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded font-bold">
               {error}
@@ -632,8 +626,8 @@ const POSMostrador = () => {
             {cashOpen ? '🟢 CAJA ABIERTA — Puedes vender' : '🔴 CAJA CERRADA — Abre caja antes de vender'}
           </div>
 
-          <div className="grid grid-cols-1 2xl:grid-cols-12 gap-5">
-            <div className="2xl:col-span-8 space-y-5">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+            <div className="xl:col-span-8 space-y-5">
               <div className="card">
                 <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
                   <div>
@@ -729,7 +723,7 @@ const POSMostrador = () => {
                       Productos disponibles
                     </h3>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
                       {filteredProducts.map((product) => (
                         <button
                           key={product.id}
@@ -768,8 +762,8 @@ const POSMostrador = () => {
               </div>
             </div>
 
-            <div className="2xl:col-span-4">
-              <div className="card sticky top-4">
+            <div className="xl:col-span-4">
+              <div className="card xl:sticky xl:top-4">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-3xl font-poppins font-bold">
                     Pedido actual
@@ -935,8 +929,7 @@ const POSMostrador = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </Layout>
   )
 }
 
