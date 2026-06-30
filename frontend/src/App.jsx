@@ -15,6 +15,8 @@ import Combos from './pages/Products/Combos'
 import Inventory from './pages/Inventory/Inventory'
 import Customers from './pages/Customers/Customers'
 import Orders from './pages/Orders/Orders'
+import ExternalOrders from './pages/ExternalOrders/ExternalOrders'
+import Channels from './pages/Channels/Channels'
 import Reports from './pages/Reports/Reports'
 import Users from './pages/Users/Users'
 import BusinessSettings from './pages/Settings/BusinessSettings'
@@ -38,6 +40,8 @@ function App() {
           <Route path="/inventario" element={<ProtectedRoute roles={['admin']}><Inventory /></ProtectedRoute>} />
           <Route path="/clientes" element={<ProtectedRoute roles={['cajero', 'admin']}><Customers /></ProtectedRoute>} />
           <Route path="/pedidos" element={<ProtectedRoute roles={['cajero', 'admin']}><Orders /></ProtectedRoute>} />
+          <Route path="/pedidos-externos" element={<ProtectedRoute roles={['cajero', 'admin']}><ExternalOrders /></ProtectedRoute>} />
+          <Route path="/canales" element={<ProtectedRoute roles={['admin']}><Channels /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reports /></ProtectedRoute>} />
           <Route path="/finanzas" element={<ProtectedRoute roles={['admin']}><Finance /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute roles={['admin']}><Users /></ProtectedRoute>} />
