@@ -7,6 +7,7 @@ import 'express-async-errors'
 import authRoutes from './routes/auth.routes.js'
 import productRoutes from './routes/products.routes.js'
 import orderRoutes from './routes/orders.routes.js'
+import externalOrdersRoutes from './routes/external-orders.routes.js'
 import cashRoutes from './routes/cash.routes.js'
 import inventoryRoutes from './routes/inventory.routes.js'
 import userRoutes from './routes/users.routes.js'
@@ -48,6 +49,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
+app.use('/api/external-orders', externalOrdersRoutes)
 app.use('/api/cash', cashRoutes)
 app.use('/api/inventory', inventoryRoutes)
 app.use('/api/users', userRoutes)
