@@ -25,6 +25,10 @@ const Sidebar = () => {
     { label: 'Inventario', path: '/inventario', icon: '📈', roles: ['admin'] },
     { label: 'Clientes', path: '/clientes', icon: '👥', roles: ['admin', 'cajero'] },
     { label: 'Pedidos', path: '/pedidos', icon: '📋', roles: ['admin', 'cajero'] },
+
+    { label: 'Pedidos Externos', path: '/pedidos-externos', icon: '🛵', roles: ['admin', 'cajero'] },
+    { label: 'Canales', path: '/canales', icon: '🔌', roles: ['admin'] },
+
     { label: 'Reportes', path: '/reportes', icon: '📈', roles: ['admin'] },
     { label: 'Usuarios', path: '/usuarios', icon: '👤', roles: ['admin'] },
     { label: 'Configuración', path: '/configuracion', icon: '⚙️', roles: ['admin'] },
@@ -44,15 +48,10 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* SIDEBAR ESCRITORIO / NOTEBOOK / TABLET GRANDE */}
       <aside className="hidden lg:flex w-64 bg-black text-white shadow-xl flex-col h-screen border-r border-yellow-400 fixed left-0 top-0 z-40">
         <div className="p-4 border-b border-yellow-400">
           <div className="bg-black rounded-2xl p-3 flex flex-col items-center">
-            <img
-              src={logo}
-              alt="American Burger"
-              className="w-36 h-auto object-contain mb-2"
-            />
+            <img src={logo} alt="American Burger" className="w-36 h-auto object-contain mb-2" />
 
             <div className="text-center">
               <p className="text-[11px] tracking-[0.25em] text-gray-400 font-bold">
@@ -102,14 +101,9 @@ const Sidebar = () => {
         </div>
       </aside>
 
-      {/* BARRA SUPERIOR MÓVIL / TABLET */}
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-black border-b border-yellow-400 z-50 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          <img
-            src={logo}
-            alt="American Burger"
-            className="w-24 h-auto object-contain"
-          />
+          <img src={logo} alt="American Burger" className="w-24 h-auto object-contain" />
           <div>
             <p className="text-[10px] tracking-[0.18em] text-gray-400 font-bold">
               SISTEMA POS
@@ -128,7 +122,6 @@ const Sidebar = () => {
         </button>
       </header>
 
-      {/* MENÚ INFERIOR MÓVIL */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-black border-t border-yellow-400 z-50 grid grid-cols-5">
         {mainMobileItems.map((item) => (
           <Link
