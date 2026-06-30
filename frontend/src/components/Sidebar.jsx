@@ -35,39 +35,43 @@ const Sidebar = () => {
     item.roles.includes(user?.role?.toLowerCase())
   )
 
-  return (
-    <aside className="w-64 bg-black text-white shadow-xl flex flex-col h-screen border-r border-yellow-400">
-      <div className="p-4 border-b border-yellow-400">
-        <div className="bg-black rounded-2xl p-3 flex flex-col items-center">
-          <img
-            src={logo}
-            alt="American Burger"
-            className="w-36 h-auto object-contain mb-2"
-          />
+  const mainMobileItems = filteredMenu.filter((item) =>
+    ['/', '/pos/mostrador', '/pos/delivery', '/caja', '/cocina'].includes(item.path)
+  )
 
-          <div className="text-center">
-            <p className="text-[11px] tracking-[0.25em] text-gray-400 font-bold">
-              SISTEMA POS
-            </p>
-            <p className="text-sm font-bold text-yellow-400">
-              American Burger
-            </p>
+  const isActive = (path) =>
+    location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+
+  return (
+    <>
+      {/* SIDEBAR ESCRITORIO / NOTEBOOK / TABLET GRANDE */}
+      <aside className="hidden lg:flex w-64 bg-black text-white shadow-xl flex-col h-screen border-r border-yellow-400 fixed left-0 top-0 z-40">
+        <div className="p-4 border-b border-yellow-400">
+          <div className="bg-black rounded-2xl p-3 flex flex-col items-center">
+            <img
+              src={logo}
+              alt="American Burger"
+              className="w-36 h-auto object-contain mb-2"
+            />
+
+            <div className="text-center">
+              <p className="text-[11px] tracking-[0.25em] text-gray-400 font-bold">
+                SISTEMA POS
+              </p>
+              <p className="text-sm font-bold text-yellow-400">
+                American Burger
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {filteredMenu.map((item) => {
-          const active =
-            location.pathname === item.path ||
-            (item.path !== '/' && location.pathname.startsWith(item.path))
-
-          return (
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          {filteredMenu.map((item) => (
             <Link
               key={item.path}
               to={item.path}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold ${
-                active
+                isActive(item.path)
                   ? 'bg-yellow-400 text-black shadow-md'
                   : 'text-white hover:bg-zinc-900 hover:text-yellow-400'
               }`}
@@ -75,29 +79,73 @@ const Sidebar = () => {
               <span className="text-xl w-6 text-center">{item.icon}</span>
               <span>{item.label}</span>
             </Link>
-          )
-        })}
-      </nav>
+          ))}
+        </nav>
 
-      <div className="border-t border-yellow-400 p-4">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
-          <p className="text-xs text-gray-400">Sesión</p>
-          <p className="text-sm font-bold text-yellow-400 leading-tight">
-            {user?.full_name || 'Administrador American Burger'}
-          </p>
-          <p className="text-xs text-gray-400 capitalize mt-1">
-            {user?.role || 'admin'}
-          </p>
+        <div className="border-t border-yellow-400 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
+            <p className="text-xs text-gray-400">Sesión</p>
+            <p className="text-sm font-bold text-yellow-400 leading-tight">
+              {user?.full_name || 'Administrador American Burger'}
+            </p>
+            <p className="text-xs text-gray-400 capitalize mt-1">
+              {user?.role || 'admin'}
+            </p>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl transition-all"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
+      </aside>
+
+      {/* BARRA SUPERIOR MÓVIL / TABLET */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-black border-b border-yellow-400 z-50 flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <img
+            src={logo}
+            alt="American Burger"
+            className="w-24 h-auto object-contain"
+          />
+          <div>
+            <p className="text-[10px] tracking-[0.18em] text-gray-400 font-bold">
+              SISTEMA POS
+            </p>
+            <p className="text-xs font-bold text-yellow-400">
+              American Burger
+            </p>
+          </div>
         </div>
 
         <button
           onClick={handleLogout}
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl transition-all"
+          className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-2 rounded-lg"
         >
-          Cerrar Sesión
+          Salir
         </button>
-      </div>
-    </aside>
+      </header>
+
+      {/* MENÚ INFERIOR MÓVIL */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-black border-t border-yellow-400 z-50 grid grid-cols-5">
+        {mainMobileItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={`flex flex-col items-center justify-center py-2 text-[11px] font-bold ${
+              isActive(item.path)
+                ? 'text-yellow-400 bg-zinc-900'
+                : 'text-white'
+            }`}
+          >
+            <span className="text-lg leading-none">{item.icon}</span>
+            <span className="mt-1 truncate max-w-[65px]">{item.label}</span>
+          </Link>
+        ))}
+      </nav>
+    </>
   )
 }
 
