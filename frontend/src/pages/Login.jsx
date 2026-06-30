@@ -8,11 +8,13 @@ const Login = () => {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
   const { login } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
     setLoading(true)
     setError('')
 
@@ -28,72 +30,98 @@ const Login = () => {
   }
 
   return (
-    <div className="flex h-screen bg-black">
-      <div className="w-1/2 flex flex-col items-center justify-center text-white p-10 bg-black">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+
+      {/* PANEL IZQUIERDO */}
+      <div className="w-full lg:w-1/2 bg-black flex flex-col items-center justify-center px-8 py-12">
+
         <img
           src={logo}
           alt="American Burger"
-          className="w-[420px] max-w-full object-contain mx-auto mb-10"
+          className="w-48 sm:w-64 lg:w-[420px] h-auto object-contain mb-8"
         />
 
-        <p className="text-3xl font-poppins font-bold mb-4 text-white">
-          Sistema POS Gastronómico
+        <h1 className="text-white text-3xl sm:text-4xl lg:text-5xl font-black text-center leading-tight">
+          Sistema POS
+          <br />
+          Gastronómico
+        </h1>
+
+        <p className="text-gray-400 text-center mt-6 max-w-md text-base sm:text-lg">
+          Gestiona tu negocio de comida rápida de forma profesional y eficiente.
         </p>
 
-        <p className="text-gray-400 text-center max-w-md text-lg">
-          Gestiona tu negocio de comida rápida de forma profesional y eficiente
-        </p>
       </div>
 
-      <div className="w-1/2 flex items-center justify-center bg-gray-100 p-8">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+      {/* PANEL DERECHO */}
+      <div className="w-full lg:w-1/2 bg-gray-100 flex items-center justify-center px-5 py-10">
+
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 sm:p-10">
+
+          <h2 className="text-4xl font-black text-center mb-8">
+            Iniciar Sesión
+          </h2>
+
+          {error && (
+            <div className="bg-red-100 border border-red-300 rounded-xl p-3 mb-5 text-red-700">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
-            <h3 className="text-3xl font-poppins font-bold text-black mb-8 text-center">
-              Iniciar Sesión
-            </h3>
 
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                {error}
-              </div>
-            )}
+            <div className="mb-5">
 
-            <div className="mb-6">
-              <label className="label">Correo Electrónico</label>
+              <label className="block mb-2 font-semibold">
+                Correo Electrónico
+              </label>
+
               <input
                 type="email"
-                className="input"
+                className="w-full rounded-xl border border-gray-300 px-4 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
+
             </div>
 
             <div className="mb-8">
-              <label className="label">Contraseña</label>
+
+              <label className="block mb-2 font-semibold">
+                Contraseña
+              </label>
+
               <input
                 type="password"
-                className="input"
+                className="w-full rounded-xl border border-gray-300 px-4 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-yellow-400 font-poppins font-bold py-3 rounded-lg hover:bg-yellow-400 hover:text-black transition-all disabled:opacity-50"
+              className="w-full rounded-xl bg-black text-yellow-400 py-4 text-xl font-bold hover:bg-yellow-400 hover:text-black transition"
             >
               {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </button>
+
           </form>
 
-          <p className="text-center text-gray-600 mt-6 text-sm">
-            ¿Problemas al iniciar sesión? Contacta al administrador
+          <p className="text-center text-gray-500 mt-8">
+            ¿Problemas al iniciar sesión?
+            <br />
+            Contacta al administrador.
           </p>
+
         </div>
+
       </div>
+
     </div>
   )
 }
