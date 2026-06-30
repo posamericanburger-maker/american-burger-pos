@@ -7,20 +7,78 @@ const cleanPhone = (phone = '') => String(phone).replace(/[^0-9]/g, '')
 
 const moneyNumber = (value) => Number(value || 0)
 
-const normalizeExternalItem = (item = {}) => {
+const isValidUuid = (value) =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
+const normalizeText = (value = '') =>
+  String(value)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const findProductByName = async (name = '') => {
+  if (!name) return null
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('active', true)
+
+  if (error) throw error
+
+  const normalizedName = normalizeText(name)
+
+  return (
+    data?.find((product) => normalizeText(product.name) === normalizedName) ||
+    data?.find((product) => normalizeText(product.name).includes(normalizedName)) ||
+    data?.find((product) => normalizedName.includes(normalizeText(product.name))) ||
+    null
+  )
+}
+
+const normalizeExternalItem = async (item = {}) => {
   const quantity = Number(item.quantity || 1)
   const unitPrice = Number(item.unit_price || item.price || 0)
+  const rawProductId = item.product_id || item.id || null
+
+  let product = null
+
+  if (isValidUuid(rawProductId)) {
+    const { data } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', rawProductId)
+      .maybeSingle()
+
+    product = data || null
+  }
+
+  if (!product) {
+    product = await findProductByName(item.name || item.product_name || '')
+  }
+
+  const productName =
+    product?.name ||
+    item.name ||
+    item.product_name ||
+    'Producto externo'
+
+  const finalPrice =
+    unitPrice ||
+    Number(product?.price || 0)
 
   return {
-    product_id: item.product_id || item.id || null,
-    name: item.name || item.product_name || 'Producto externo',
-    product_name: item.name || item.product_name || 'Producto externo',
-    name_snapshot: item.name || item.product_name || 'Producto externo',
-    category_name: item.category_name || 'Pedido externo',
+    product_id: product?.id || null,
+    name: productName,
+    product_name: productName,
+    name_snapshot: productName,
+    category_name: item.category_name || product?.category_name || 'Pedido externo',
     quantity,
-    unit_price: unitPrice,
-    price: unitPrice,
-    subtotal: moneyNumber(item.subtotal || quantity * unitPrice),
+    unit_price: finalPrice,
+    price: finalPrice,
+    subtotal: moneyNumber(item.subtotal || quantity * finalPrice),
     sold_at: new Date().toISOString()
   }
 }
@@ -149,7 +207,11 @@ router.post('/', async (req, res) => {
       })
     }
 
-    const cleanItems = items.map(normalizeExternalItem)
+    const cleanItems = []
+
+    for (const item of items) {
+      cleanItems.push(await normalizeExternalItem(item))
+    }
 
     const subtotal = cleanItems.reduce(
       (sum, item) => sum + Number(item.subtotal || 0),
