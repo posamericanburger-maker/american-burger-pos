@@ -10,6 +10,7 @@ import ProductGrid from '../components/ProductGrid'
 import FloatingCart from '../components/FloatingCart'
 import CartDrawer from '../components/CartDrawer'
 import CheckoutDrawer from '../components/CheckoutDrawer'
+import OrderSuccessModal from '../components/OrderSuccessModal'
 import Footer from '../components/Footer'
 
 import { useCart } from '../hooks/useCart'
@@ -61,6 +62,8 @@ function Home() {
   } = useCart()
 
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [successOpen, setSuccessOpen] = useState(false)
+  const [lastOrder, setLastOrder] = useState(null)
   const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
@@ -185,6 +188,8 @@ Monto: ${money(total)}
 
       clearCart()
       setCheckoutOpen(false)
+      setLastOrder(response?.order || null)
+      setSuccessOpen(true)
 
       setCustomer({
         name: '',
@@ -196,7 +201,7 @@ Monto: ${money(total)}
         notes: ''
       })
 
-      setMessage(`Pedido enviado correctamente al POS. Código: ${response?.order?.id || 'sin código'}`)
+      setMessage('')
     } catch (error) {
       console.error('Error enviando pedido:', error)
       setMessage(error?.response?.data?.message || 'No se pudo enviar el pedido')
@@ -283,6 +288,12 @@ Monto: ${money(total)}
         onClose={() => setCheckoutOpen(false)}
         onSubmit={submitOrder}
         onCopyBankInfo={copyBankInfo}
+      />
+
+      <OrderSuccessModal
+        open={successOpen}
+        order={lastOrder}
+        onClose={() => setSuccessOpen(false)}
       />
 
       <Footer />
