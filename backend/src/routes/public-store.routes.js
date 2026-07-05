@@ -146,6 +146,49 @@ router.get('/products', async (req, res) => {
   }
 })
 
+router.get('/orders/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        number,
+        status,
+        type,
+        order_type,
+        payment_method,
+        subtotal,
+        delivery_fee,
+        total,
+        total_amount,
+        customer_name,
+        customer_phone,
+        customer_address,
+        notes,
+        created_at,
+        updated_at,
+        items:order_items (*)
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+
+    return res.json({
+      success: true,
+      order
+    })
+  } catch (error) {
+    return res.status(404).json({
+      success: false,
+      message: 'Pedido no encontrado'
+    })
+  }
+})
+
 router.post('/orders', async (req, res) => {
   try {
     const {
