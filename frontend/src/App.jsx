@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import GlobalWebOrderAlert from './components/GlobalWebOrderAlert'
 
 // Pages
 import Login from './pages/Login'
@@ -31,6 +32,8 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        <GlobalWebOrderAlert />
+
         <Routes>
           <Route path="/tienda" element={<PublicStore />} />
           <Route path="/seguimiento/:orderId" element={<Tracking />} />
