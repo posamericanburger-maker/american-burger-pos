@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPublicOrder, getPublicProducts } from '../publicStoreApi'
 import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
+import CategoryTabs from '../components/CategoryTabs'
+import ProductGrid from '../components/ProductGrid'
 
 const BANK_INFO = {
   bank: 'BANCO POR DEFINIR',
@@ -24,17 +26,10 @@ const onlyNumbers = (value = '') => String(value).replace(/[^0-9]/g, '')
 const normalizeChilePhone = (value = '') => {
   let digits = onlyNumbers(value)
 
-  if (digits.startsWith('56')) {
-    digits = digits.slice(2)
-  }
+  if (digits.startsWith('56')) digits = digits.slice(2)
+  if (digits.startsWith('0')) digits = digits.slice(1)
 
-  if (digits.startsWith('0')) {
-    digits = digits.slice(1)
-  }
-
-  digits = digits.slice(0, 9)
-
-  return digits
+  return digits.slice(0, 9)
 }
 
 const formatChilePhone = (value = '') => {
@@ -57,15 +52,13 @@ const formatChilePhone = (value = '') => {
 
 const buildFinalPhone = (value = '') => {
   const digits = normalizeChilePhone(value)
-
-  if (!digits) return ''
-
-  return `56${digits}`
+  return digits ? `56${digits}` : ''
 }
 
 function Home() {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState([])
+  const [selectedCategory, setSelectedCategory] = useState('TODOS')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
@@ -95,6 +88,19 @@ function Home() {
       setLoading(false)
     }
   }
+
+  const categories = useMemo(() => {
+    const list = products.map((product) => product.category_name || 'Productos')
+    return ['TODOS', ...new Set(list)]
+  }, [products])
+
+  const filteredProducts = useMemo(() => {
+    if (selectedCategory === 'TODOS') return products
+
+    return products.filter(
+      (product) => (product.category_name || 'Productos') === selectedCategory
+    )
+  }, [products, selectedCategory])
 
   const addToCart = (product) => {
     setMessage('')
@@ -276,72 +282,52 @@ Monto: ${money(total)}
       <Navbar />
       <Hero />
 
-      <section id="menu" className="max-w-7xl mx-auto px-6 py-16">
-        <h2 className="text-4xl font-black mb-10">Menú American Burger</h2>
+      <CategoryTabs
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelect={setSelectedCategory}
+      />
+
+      <section id="menu" className="max-w-7xl mx-auto px-4 md:px-6 py-14 md:py-20">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+          <div>
+            <p className="text-yellow-400 font-black tracking-widest text-sm">
+              MENÚ ONLINE
+            </p>
+
+            <h2 className="text-4xl md:text-5xl font-black mt-2">
+              Elige tu favorito
+            </h2>
+
+            <p className="text-neutral-400 mt-3">
+              Productos reales conectados directamente a tu POS.
+            </p>
+          </div>
+
+          <div className="bg-neutral-900 border border-white/10 rounded-2xl px-5 py-4">
+            <p className="text-sm text-neutral-400">Productos disponibles</p>
+            <p className="text-2xl font-black text-yellow-400">
+              {filteredProducts.length}
+            </p>
+          </div>
+        </div>
 
         {message && (
-          <div className="mb-6 bg-yellow-400 text-black rounded-xl px-5 py-4 font-black">
+          <div className="mb-8 bg-yellow-400 text-black rounded-2xl px-5 py-4 font-black">
             {message}
           </div>
         )}
 
-        {loading ? (
-          <p>Cargando productos...</p>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {products.map((product) => (
-              <article
-                key={product.id}
-                className="bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-800 hover:border-yellow-400 transition"
-              >
-                <div className="h-56 bg-neutral-800 flex items-center justify-center">
-                  {product.image_url ? (
-                    <img
-                      src={product.image_url}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-8xl">🍔</span>
-                  )}
-                </div>
-
-                <div className="p-6">
-                  <p className="text-yellow-400 text-sm font-black">
-                    {product.category_name}
-                  </p>
-
-                  <h3 className="text-2xl font-black mt-2">
-                    {product.name}
-                  </h3>
-
-                  <p className="text-neutral-400 mt-3 min-h-[70px]">
-                    {product.description || 'Producto American Burger'}
-                  </p>
-
-                  <div className="flex justify-between items-center mt-6">
-                    <strong className="text-3xl text-yellow-400">
-                      {money(product.price)}
-                    </strong>
-
-                    <button
-                      type="button"
-                      onClick={() => addToCart(product)}
-                      className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-black"
-                    >
-                      Agregar
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+        <ProductGrid
+          products={filteredProducts}
+          loading={loading}
+          onAdd={addToCart}
+        />
       </section>
 
-      <section id="pedido" className="max-w-7xl mx-auto px-6 pb-24">
+      <section id="pedido" className="max-w-7xl mx-auto px-4 md:px-6 pb-24">
         <div className="grid lg:grid-cols-2 gap-8">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8">
             <h2 className="text-3xl font-black mb-6">Tu pedido</h2>
 
             {cart.length === 0 ? (
@@ -404,7 +390,7 @@ Monto: ${money(total)}
 
           <form
             onSubmit={submitOrder}
-            className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 space-y-4"
+            className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 space-y-4"
           >
             <h2 className="text-3xl font-black mb-4">Datos del cliente</h2>
 
