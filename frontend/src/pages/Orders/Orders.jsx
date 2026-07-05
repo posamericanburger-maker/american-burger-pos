@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
+import { supabase } from '../../lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://american-burger-pos-api-d8r1.onrender.com/api'
 
-const money = (value) => {
-  return new Intl.NumberFormat('es-CL', {
+const money = (value) =>
+  new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: 'CLP',
     maximumFractionDigits: 0
   }).format(Number(value || 0))
-}
 
 const cleanPhone = (phone = '') => String(phone).replace(/[^0-9]/g, '')
 
@@ -27,7 +27,7 @@ const openWhatsApp = (order) => {
   if (!phone) return
 
   const text = encodeURIComponent(
-    `Hola ${getCustomerName(order)} 👋\n\nRecibimos tu pedido en American Burger 🍔.\nYa fue aceptado y comenzó su preparación.\n\nTiempo estimado: 20 a 30 minutos.`
+    `Hola ${getCustomerName(order)} 👋\n\nTu pedido fue aceptado en American Burger 🍔.\nYa comenzó su preparación.\n\nTiempo estimado: 20 a 30 minutos.`
   )
 
   window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
@@ -40,7 +40,6 @@ const Orders = () => {
   const [message, setMessage] = useState('')
   const [newOrderModal, setNewOrderModal] = useState(null)
 
-  const knownPendingIdsRef = useRef(new Set())
   const initializedRef = useRef(false)
 
   const getToken = () =>
@@ -56,9 +55,9 @@ const Orders = () => {
       const gainNode = audioContext.createGain()
 
       oscillator.type = 'sine'
-      oscillator.frequency.setValueAtTime(920, audioContext.currentTime)
-      oscillator.frequency.setValueAtTime(680, audioContext.currentTime + 0.22)
-      oscillator.frequency.setValueAtTime(920, audioContext.currentTime + 0.44)
+      oscillator.frequency.setValueAtTime(950, audioContext.currentTime)
+      oscillator.frequency.setValueAtTime(680, audioContext.currentTime + 0.2)
+      oscillator.frequency.setValueAtTime(950, audioContext.currentTime + 0.4)
 
       gainNode.gain.setValueAtTime(0.001, audioContext.currentTime)
       gainNode.gain.exponentialRampToValueAtTime(0.45, audioContext.currentTime + 0.03)
@@ -114,37 +113,8 @@ const Orders = () => {
         data.items ||
         (Array.isArray(data) ? data : [])
 
-      const sortedList = normalizeOrders(list)
-
-      const pendingIds = new Set(
-        sortedList
-          .filter((order) => String(order.status || '').toLowerCase() === 'pending')
-          .map((order) => order.id)
-          .filter(Boolean)
-      )
-
-      if (initializedRef.current) {
-        const newPendingId = [...pendingIds].find(
-          (id) => !knownPendingIdsRef.current.has(id)
-        )
-
-        if (newPendingId) {
-          const newOrder = sortedList.find((order) => order.id === newPendingId)
-
-          playAlertSound()
-          setMessage('🔔 Nuevo pedido recibido')
-
-          if (newOrder && isWebOrder(newOrder)) {
-            setNewOrderModal(newOrder)
-          }
-        }
-      }
-
-      knownPendingIdsRef.current = pendingIds
-      initializedRef.current = true
-
-      setOrders(sortedList)
-    } catch (err) {
+      setOrders(normalizeOrders(list))
+    } catch {
       setError('No se pudieron cargar los pedidos')
     } finally {
       if (!silent) setLoading(false)
@@ -154,11 +124,49 @@ const Orders = () => {
   useEffect(() => {
     loadOrders()
 
-    const interval = setInterval(() => {
-      loadOrders({ silent: true })
-    }, 8000)
+    const channel = supabase
+      .channel('orders-live')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders'
+        },
+        async (payload) => {
+          await loadOrders({ silent: true })
 
-    return () => clearInterval(interval)
+          if (initializedRef.current) {
+            const order = payload.new
+
+            if (order && isWebOrder(order)) {
+              playAlertSound()
+              setMessage('🔔 Nuevo pedido web recibido')
+              setNewOrderModal(order)
+            }
+          }
+
+          initializedRef.current = true
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders'
+        },
+        () => {
+          loadOrders({ silent: true })
+        }
+      )
+      .subscribe()
+
+    initializedRef.current = true
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const updateStatus = async (id, status) => {
@@ -175,7 +183,7 @@ const Orders = () => {
       })
 
       setMessage('Estado actualizado')
-      await loadOrders()
+      await loadOrders({ silent: true })
     } catch {
       setError('No se pudo actualizar el pedido')
     }
@@ -219,7 +227,7 @@ const Orders = () => {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-poppins font-bold">
-                  Pedidos
+                  Pedidos en vivo
                 </h2>
 
                 <p className="text-gray-600">
