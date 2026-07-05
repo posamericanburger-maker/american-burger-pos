@@ -34,6 +34,7 @@ function Home() {
       const data = await getPublicProducts()
       setProducts(data)
     } catch (error) {
+      console.error('Error cargando productos:', error)
       setMessage('No se pudieron cargar los productos')
     } finally {
       setLoading(false)
@@ -41,6 +42,8 @@ function Home() {
   }
 
   const addToCart = (product) => {
+    setMessage('')
+
     setCart((current) => {
       const exists = current.find((item) => item.id === product.id)
 
@@ -72,7 +75,9 @@ function Home() {
     setCart((current) =>
       current
         .map((item) =>
-          item.id === id ? { ...item, quantity: item.quantity - 1 } : item
+          item.id === id
+            ? { ...item, quantity: item.quantity - 1 }
+            : item
         )
         .filter((item) => item.quantity > 0)
     )
@@ -81,7 +86,9 @@ function Home() {
   const increaseItem = (id) => {
     setCart((current) =>
       current.map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + 1 } : item
+        item.id === id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
       )
     )
   }
@@ -98,6 +105,9 @@ function Home() {
 
   const submitOrder = async (event) => {
     event.preventDefault()
+
+    console.log('submitOrder ejecutado')
+
     setMessage('')
 
     if (cart.length === 0) {
@@ -131,10 +141,10 @@ function Home() {
         quantity: item.quantity,
         unit_price: item.unit_price,
         price: item.price,
-        subtotal: Number(item.price) * Number(item.quantity)
+        subtotal: Number(item.price || 0) * Number(item.quantity || 1)
       }))
 
-      const response = await createPublicOrder({
+      const payload = {
         customer_name: customer.name,
         customer_phone: customer.phone,
         customer_address: customer.address,
@@ -145,7 +155,13 @@ function Home() {
         subtotal,
         delivery_fee: deliveryFee,
         total
-      })
+      }
+
+      console.log('Enviando pedido web:', payload)
+
+      const response = await createPublicOrder(payload)
+
+      console.log('Respuesta pedido web:', response)
 
       setCart([])
       setCustomer({
@@ -156,8 +172,9 @@ function Home() {
         notes: ''
       })
 
-      setMessage(`Pedido enviado correctamente al POS. Código: ${response?.order?.id}`)
+      setMessage(`Pedido enviado correctamente al POS. Código: ${response?.order?.id || 'sin código'}`)
     } catch (error) {
+      console.error('Error enviando pedido:', error)
       setMessage(error?.response?.data?.message || 'No se pudo enviar el pedido')
     } finally {
       setSending(false)
@@ -188,7 +205,15 @@ function Home() {
                 className="bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-800 hover:border-yellow-400 transition"
               >
                 <div className="h-56 bg-neutral-800 flex items-center justify-center">
-                  <span className="text-8xl">🍔</span>
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-8xl">🍔</span>
+                  )}
                 </div>
 
                 <div className="p-6">
@@ -210,6 +235,7 @@ function Home() {
                     </strong>
 
                     <button
+                      type="button"
                       onClick={() => addToCart(product)}
                       className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-black"
                     >
@@ -246,6 +272,7 @@ function Home() {
 
                     <div className="flex items-center gap-3">
                       <button
+                        type="button"
                         onClick={() => decreaseItem(item.id)}
                         className="bg-neutral-700 w-9 h-9 rounded-full font-black"
                       >
@@ -255,6 +282,7 @@ function Home() {
                       <span className="font-black">{item.quantity}</span>
 
                       <button
+                        type="button"
                         onClick={() => increaseItem(item.id)}
                         className="bg-neutral-700 w-9 h-9 rounded-full font-black"
                       >
@@ -334,6 +362,7 @@ function Home() {
             />
 
             <button
+              type="submit"
               disabled={sending || cart.length === 0}
               className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black py-5 rounded-2xl font-black text-xl"
             >
