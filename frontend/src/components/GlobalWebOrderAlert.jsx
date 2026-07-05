@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { printWebOrderDocuments } from '../utils/orderPrinters'
 
@@ -25,7 +26,6 @@ const getCustomerPhone = (order) =>
 
 const openWhatsApp = (order) => {
   const phone = getCustomerPhone(order)
-
   if (!phone) return
 
   const text = encodeURIComponent(
@@ -36,15 +36,23 @@ const openWhatsApp = (order) => {
 }
 
 function GlobalWebOrderAlert() {
+  const location = useLocation()
   const [order, setOrder] = useState(null)
   const [visible, setVisible] = useState(false)
-  const initializedRef = useRef(false)
+  const shownIdsRef = useRef(new Set())
 
   const getToken = () =>
     localStorage.getItem('token') ||
     localStorage.getItem('authToken') ||
     localStorage.getItem('access_token') ||
     ''
+
+  const isPosArea = () => {
+    const path = location.pathname
+    return !path.startsWith('/tienda') &&
+      !path.startsWith('/seguimiento') &&
+      !path.startsWith('/login')
+  }
 
   const playAlertSound = () => {
     try {
@@ -66,9 +74,28 @@ function GlobalWebOrderAlert() {
 
       oscillator.start()
       oscillator.stop(audioContext.currentTime + 1)
-    } catch (error) {
-      console.warn('No se pudo reproducir sonido de alerta', error)
-    }
+    } catch {}
+  }
+
+  const fetchOrders = async () => {
+    const token = getToken()
+    if (!token || !isPosArea()) return []
+
+    const response = await fetch(`${API_URL}/orders`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    const data = await response.json()
+
+    return (
+      data.orders ||
+      data.data ||
+      data.items ||
+      (Array.isArray(data) ? data : [])
+    )
   }
 
   const loadOrderDetail = async (id) => {
@@ -84,6 +111,41 @@ function GlobalWebOrderAlert() {
     const data = await response.json()
 
     return data.order || data.data || data
+  }
+
+  const showOrderAlert = async (rawOrder) => {
+    if (!rawOrder?.id) return
+    if (!isWebOrder(rawOrder)) return
+    if (String(rawOrder.status || '').toLowerCase() !== 'pending') return
+    if (shownIdsRef.current.has(rawOrder.id)) return
+
+    shownIdsRef.current.add(rawOrder.id)
+
+    try {
+      const fullOrder = await loadOrderDetail(rawOrder.id)
+      playAlertSound()
+      setOrder(fullOrder)
+      setVisible(true)
+    } catch {
+      playAlertSound()
+      setOrder(rawOrder)
+      setVisible(true)
+    }
+  }
+
+  const checkPendingWebOrders = async () => {
+    try {
+      const orders = await fetchOrders()
+
+      const pendingWeb = orders
+        .filter((item) => isWebOrder(item))
+        .filter((item) => String(item.status || '').toLowerCase() === 'pending')
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0]
+
+      if (pendingWeb) {
+        await showOrderAlert(pendingWeb)
+      }
+    } catch {}
   }
 
   const updateStatus = async (id, status) => {
@@ -103,9 +165,7 @@ function GlobalWebOrderAlert() {
     if (!order?.id) return
 
     await updateStatus(order.id, 'preparing')
-
     printWebOrderDocuments(order)
-
     openWhatsApp(order)
 
     setVisible(false)
@@ -122,8 +182,12 @@ function GlobalWebOrderAlert() {
   }
 
   useEffect(() => {
+    if (!isPosArea()) return
+
+    checkPendingWebOrders()
+
     const channel = supabase
-      .channel('global-web-order-alert')
+      .channel('global-web-order-alert-v2')
       .on(
         'postgres_changes',
         {
@@ -131,42 +195,26 @@ function GlobalWebOrderAlert() {
           schema: 'public',
           table: 'orders'
         },
-        async (payload) => {
-          if (!initializedRef.current) {
-            initializedRef.current = true
-            return
-          }
-
-          const newOrder = payload.new
-
-          if (!newOrder || !isWebOrder(newOrder)) return
-
-          try {
-            const fullOrder = await loadOrderDetail(newOrder.id)
-
-            playAlertSound()
-            setOrder(fullOrder)
-            setVisible(true)
-          } catch {
-            playAlertSound()
-            setOrder(newOrder)
-            setVisible(true)
-          }
+        (payload) => {
+          showOrderAlert(payload.new)
         }
       )
       .subscribe()
 
-    initializedRef.current = true
+    const interval = setInterval(() => {
+      checkPendingWebOrders()
+    }, 5000)
 
     return () => {
       supabase.removeChannel(channel)
+      clearInterval(interval)
     }
-  }, [])
+  }, [location.pathname])
 
   if (!visible || !order) return null
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-[99999] bg-black/80 flex items-center justify-center px-4">
       <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden">
         <div className="bg-black text-white p-6">
           <p className="text-yellow-400 font-black tracking-widest">
@@ -179,33 +227,19 @@ function GlobalWebOrderAlert() {
         </div>
 
         <div className="p-6 space-y-3">
-          <p>
-            <span className="font-black">Cliente:</span>{' '}
-            {getCustomerName(order)}
-          </p>
+          <p><span className="font-black">Cliente:</span> {getCustomerName(order)}</p>
 
           {getCustomerPhone(order) && (
-            <p>
-              <span className="font-black">WhatsApp:</span> +{getCustomerPhone(order)}
-            </p>
+            <p><span className="font-black">WhatsApp:</span> +{getCustomerPhone(order)}</p>
           )}
 
-          <p>
-            <span className="font-black">Tipo:</span>{' '}
-            {order.type || order.order_type || 'Pedido web'}
-          </p>
+          <p><span className="font-black">Tipo:</span> {order.type || order.order_type || 'Pedido web'}</p>
 
           {order.customer_address && (
-            <p>
-              <span className="font-black">Dirección:</span>{' '}
-              {order.customer_address}
-            </p>
+            <p><span className="font-black">Dirección:</span> {order.customer_address}</p>
           )}
 
-          <p>
-            <span className="font-black">Pago:</span>{' '}
-            {order.payment_method || 'Pendiente'}
-          </p>
+          <p><span className="font-black">Pago:</span> {order.payment_method || 'Pendiente'}</p>
 
           <p className="text-4xl font-black text-green-700">
             {money(order.total || order.total_amount || 0)}
