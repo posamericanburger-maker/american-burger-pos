@@ -4,13 +4,14 @@ import { supabase } from '../config/supabase.js'
 const router = express.Router()
 
 const cleanPhone = (phone = '') => String(phone).replace(/[^0-9]/g, '')
+
 const moneyNumber = (value) => {
   const number = Number(value || 0)
   return Number.isFinite(number) ? number : 0
 }
 
 const normalizeOrderItem = (item, orderId = null) => {
-  const productName = item.name || item.product_name || item.name_snapshot || 'Producto'
+  const productName = item.name || item.product_name || item.name_snapshot || 'Producto web'
   const categoryName = item.category_name || item.category?.name || 'Tienda web'
   const quantity = Number(item.quantity || 1)
   const unitPrice = moneyNumber(item.unit_price || item.price || 0)
@@ -45,6 +46,7 @@ const applyInventoryForItems = async (items = [], action = 'discount', orderId =
 
     for (const recipe of recipeItems) {
       const quantityToMove = Number(recipe.quantity || 0) * Number(item.quantity || 1)
+
       if (quantityToMove <= 0) continue
 
       const { data: inventoryItem, error: inventoryError } = await supabase
@@ -55,8 +57,16 @@ const applyInventoryForItems = async (items = [], action = 'discount', orderId =
 
       if (inventoryError || !inventoryItem) continue
 
-      const currentStock = Number(inventoryItem.current_stock ?? inventoryItem.stock ?? 0)
-      const newStock = action === 'restore' ? currentStock + quantityToMove : currentStock - quantityToMove
+      const currentStock = Number(
+        inventoryItem.current_stock ??
+        inventoryItem.stock ??
+        0
+      )
+
+      const newStock =
+        action === 'restore'
+          ? currentStock + quantityToMove
+          : currentStock - quantityToMove
 
       const { error: updateStockError } = await supabase
         .from('inventory')
@@ -69,23 +79,24 @@ const applyInventoryForItems = async (items = [], action = 'discount', orderId =
 
       if (updateStockError) throw updateStockError
 
-      await supabase.from('inventory_movements').insert({
-        item_id: recipe.inventory_item_id,
-        type: action === 'restore' ? 'web_sale_restore' : 'web_sale_discount',
-        quantity: quantityToMove,
-        description:
-          action === 'restore'
-            ? `Devolución automática por pedido web ${orderId}`
-            : `Descuento automático por pedido web ${orderId}`,
-        created_at: new Date().toISOString()
-      })
+      await supabase
+        .from('inventory_movements')
+        .insert({
+          item_id: recipe.inventory_item_id,
+          type: action === 'restore' ? 'web_sale_restore' : 'web_sale_discount',
+          quantity: quantityToMove,
+          description:
+            action === 'restore'
+              ? `Devolución automática por pedido web ${orderId}`
+              : `Descuento automático por pedido web ${orderId}`,
+          created_at: new Date().toISOString()
+        })
     }
   }
 }
 
 router.get('/health', (req, res) => {
   res.json({
-    success: true,
     status: 'OK',
     module: 'public-store',
     timestamp: new Date().toISOString()
@@ -97,54 +108,40 @@ router.get('/products', async (req, res) => {
     const { data, error } = await supabase
       .from('products')
       .select(`
-        *,
+        id,
+        name,
+        description,
+        price,
+        category_id,
+        image_url,
         categories (
           id,
           name
         )
       `)
-      .eq('is_active', true)
       .order('name', { ascending: true })
 
     if (error) throw error
 
     const products = (data || []).map((product) => ({
       id: product.id,
-      name: product.name || product.product_name || 'Producto',
-      product_name: product.name || product.product_name || 'Producto',
-      description: product.description || product.detail || '',
-      price: moneyNumber(product.price || product.unit_price || product.sale_price || 0),
-      unit_price: moneyNumber(product.price || product.unit_price || product.sale_price || 0),
+      name: product.name,
+      description: product.description || '',
+      price: moneyNumber(product.price),
+      image_url: product.image_url || '',
       category_id: product.category_id || null,
-      category_name: product.category_name || product.categories?.name || 'Menú',
-      image_url: product.image_url || product.image || '',
-      is_active: product.is_active !== false,
-      stock: product.stock ?? product.current_stock ?? null
+      category_name: product.categories?.name || 'Productos',
+      available: true
     }))
 
-    return res.json({ success: true, products })
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Error al obtener productos de tienda web'
+    return res.json({
+      success: true,
+      products
     })
-  }
-})
-
-router.get('/categories', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('name', { ascending: true })
-
-    if (error) throw error
-
-    return res.json({ success: true, categories: data || [] })
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message || 'Error al obtener categorías'
+      message: error.message || 'Error al obtener productos de tienda'
     })
   }
 })
@@ -152,79 +149,84 @@ router.get('/categories', async (req, res) => {
 router.post('/orders', async (req, res) => {
   try {
     const {
-      order_type = 'pickup',
-      delivery_type = order_type,
+      customer_name,
+      customer_phone,
+      customer_address,
+      delivery_type = 'pickup',
+      notes = '',
       payment_method = 'pending',
-      payment_status = 'pending',
+      items = [],
       subtotal = 0,
       delivery_fee = 0,
-      total = 0,
-      total_amount = total,
-      customer = null,
-      customer_name = customer?.name || '',
-      customer_phone = customer?.phone || '',
-      customer_address = customer?.address || '',
-      notes = '',
-      items = []
+      total = 0
     } = req.body || {}
 
+    if (!customer_name || !cleanPhone(customer_phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nombre y teléfono del cliente son obligatorios'
+      })
+    }
+
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'El pedido debe tener productos' })
+      return res.status(400).json({
+        success: false,
+        message: 'El pedido debe tener productos'
+      })
     }
 
     const cleanCustomerPhone = cleanPhone(customer_phone)
 
-    if (!String(customer_name || '').trim()) {
-      return res.status(400).json({ success: false, message: 'Falta el nombre del cliente' })
-    }
+    await supabase
+      .from('customers')
+      .upsert(
+        {
+          name: customer_name || '',
+          phone: cleanCustomerPhone,
+          address: customer_address || '',
+          reference: '',
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'phone' }
+      )
 
-    if (!cleanCustomerPhone) {
-      return res.status(400).json({ success: false, message: 'Falta el teléfono del cliente' })
-    }
+    const cleanItems = items.map((item) => normalizeOrderItem(item))
 
-    await supabase.from('customers').upsert(
-      {
-        name: String(customer_name).trim(),
-        phone: cleanCustomerPhone,
-        address: customer_address || '',
-        reference: customer?.reference || '',
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: 'phone' }
+    const orderSubtotal = moneyNumber(
+      subtotal || cleanItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
     )
 
-    const cleanItemsPreview = items.map((item) => normalizeOrderItem(item))
-    const calculatedSubtotal = cleanItemsPreview.reduce((sum, item) => sum + moneyNumber(item.subtotal), 0)
-    const finalSubtotal = moneyNumber(subtotal || calculatedSubtotal)
-    const finalDeliveryFee = moneyNumber(delivery_fee)
-    const finalTotal = moneyNumber(total || total_amount || finalSubtotal + finalDeliveryFee)
+    const orderDeliveryFee = moneyNumber(delivery_fee || 0)
+    const orderTotal = moneyNumber(total || orderSubtotal + orderDeliveryFee)
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
-        type: delivery_type === 'delivery' ? 'delivery' : 'web',
-        order_type: delivery_type || order_type || 'pickup',
-        channel: 'web',
-        source: 'web',
+        type: delivery_type === 'delivery' ? 'delivery' : 'counter',
+        order_type: delivery_type === 'delivery' ? 'delivery' : 'pickup',
         status: 'pending',
-        payment_status,
         payment_method,
-        subtotal: finalSubtotal,
-        delivery_fee: finalDeliveryFee,
-        total: finalTotal,
-        total_amount: finalTotal,
+        subtotal: orderSubtotal,
+        delivery_fee: orderDeliveryFee,
+        total: orderTotal,
+        total_amount: orderTotal,
         customer_name: String(customer_name).trim(),
         customer_phone: cleanCustomerPhone,
         customer_address: customer_address || null,
-        notes,
-        created_at: new Date().toISOString()
+        notes: notes ? `[WEB] ${notes}` : '[WEB]',
+        source: 'web',
+        channel: 'web',
+        user_id: null
       })
       .select()
       .single()
 
     if (orderError) throw orderError
 
-    const orderItems = items.map((item) => normalizeOrderItem(item, order.id))
+    const orderItems = cleanItems.map((item) => ({
+      ...item,
+      order_id: order.id
+    }))
 
     const { error: itemsError } = await supabase
       .from('order_items')
@@ -232,14 +234,15 @@ router.post('/orders', async (req, res) => {
 
     if (itemsError) throw itemsError
 
-    applyInventoryForItems(orderItems, 'discount', order.id).catch((err) => {
-      console.error('Error descontando inventario pedido web:', err?.message || err)
-    })
+    applyInventoryForItems(orderItems, 'discount', order.id)
+      .catch((err) => {
+        console.error('Error descontando inventario pedido web:', err?.message || err)
+      })
 
     return res.status(201).json({
       success: true,
       message: 'Pedido web creado correctamente',
-      order: { ...order, items: orderItems }
+      order
     })
   } catch (error) {
     return res.status(500).json({
