@@ -3,7 +3,6 @@ import { createPublicOrder } from '../publicStoreApi'
 
 import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
-import PromotionBanner from '../components/PromotionBanner'
 import SearchBar from '../components/SearchBar'
 import CategoryTabs from '../components/CategoryTabs'
 import ProductGrid from '../components/ProductGrid'
@@ -211,40 +210,42 @@ Monto: ${money(total)}
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-[#f6f6f6] text-black">
       <Navbar />
-      <Hero />
-      <PromotionBanner />
 
-      <CategoryTabs
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelect={setSelectedCategory}
-      />
+      <main className="bg-black text-white">
+        <Hero />
+      </main>
 
-      <section id="menu" className="max-w-7xl mx-auto px-4 md:px-6 py-14 md:py-20">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
-          <div>
-            <p className="text-yellow-400 font-black tracking-widest text-sm">
-              MENÚ ONLINE
-            </p>
+      <section className="sticky top-0 z-40 bg-[#f6f6f6]/95 backdrop-blur border-b border-black/10">
+        <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
+          <SearchBar value={search} onChange={setSearch} />
 
-            <h2 className="text-4xl md:text-5xl font-black mt-2">
-              Elige tu favorito
-            </h2>
+          <CategoryTabs
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+        </div>
+      </section>
 
-            <p className="text-neutral-400 mt-3">
-              Productos conectados directamente al POS American Burger.
-            </p>
-          </div>
+      <section id="menu" className="max-w-4xl mx-auto px-4 py-8 pb-28">
+        <div className="mb-6">
+          <p className="text-red-600 font-black tracking-widest text-xs">
+            MENÚ ONLINE
+          </p>
 
-          <div className="w-full md:w-[420px]">
-            <SearchBar value={search} onChange={setSearch} />
-          </div>
+          <h2 className="text-3xl md:text-4xl font-black mt-1">
+            Elige fácil y rápido
+          </h2>
+
+          <p className="text-neutral-600 mt-2">
+            Agrega productos, revisa tu carrito y envía tu pedido al POS.
+          </p>
         </div>
 
         {(message || error) && (
-          <div className="mb-8 bg-yellow-400 text-black rounded-2xl px-5 py-4 font-black">
+          <div className="mb-6 bg-yellow-400 text-black rounded-2xl px-5 py-4 font-black">
             {message || error}
           </div>
         )}
