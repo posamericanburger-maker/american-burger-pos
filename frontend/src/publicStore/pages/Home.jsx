@@ -9,19 +9,11 @@ import CategoryTabs from '../components/CategoryTabs'
 import ProductGrid from '../components/ProductGrid'
 import FloatingCart from '../components/FloatingCart'
 import CartDrawer from '../components/CartDrawer'
+import CheckoutDrawer from '../components/CheckoutDrawer'
 import Footer from '../components/Footer'
 
 import { useCart } from '../hooks/useCart'
 import { useProducts } from '../hooks/useProducts'
-
-const BANK_INFO = {
-  bank: 'BANCO POR DEFINIR',
-  holder: 'AMERICAN BURGER',
-  accountType: 'Cuenta Corriente',
-  accountNumber: '000000000',
-  rut: 'XX.XXX.XXX-X',
-  email: 'americanburgerarica@gmail.com'
-}
 
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
@@ -39,24 +31,6 @@ const normalizeChilePhone = (value = '') => {
   if (digits.startsWith('0')) digits = digits.slice(1)
 
   return digits.slice(0, 9)
-}
-
-const formatChilePhone = (value = '') => {
-  const digits = normalizeChilePhone(value)
-
-  if (!digits) return '+56 '
-
-  const part1 = digits.slice(0, 1)
-  const part2 = digits.slice(1, 5)
-  const part3 = digits.slice(5, 9)
-
-  let formatted = '+56 '
-
-  if (part1) formatted += part1
-  if (part2) formatted += ` ${part2}`
-  if (part3) formatted += ` ${part3}`
-
-  return formatted
 }
 
 const buildFinalPhone = (value = '') => {
@@ -86,9 +60,11 @@ function Home() {
     itemCount
   } = useCart()
 
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
+
   const [customer, setCustomer] = useState({
     name: '',
     phone: '',
@@ -104,13 +80,11 @@ function Home() {
 
     if (!term) return filteredProducts
 
-    return filteredProducts.filter((product) => {
-      return (
-        String(product.name || '').toLowerCase().includes(term) ||
-        String(product.description || '').toLowerCase().includes(term) ||
-        String(product.category_name || '').toLowerCase().includes(term)
-      )
-    })
+    return filteredProducts.filter((product) =>
+      String(product.name || '').toLowerCase().includes(term) ||
+      String(product.description || '').toLowerCase().includes(term) ||
+      String(product.category_name || '').toLowerCase().includes(term)
+    )
   }, [filteredProducts, search])
 
   const deliveryFee = customer.deliveryType === 'delivery' ? 1500 : 0
@@ -122,12 +96,12 @@ function Home() {
     const text = `
 TRANSFERENCIA AMERICAN BURGER
 
-Banco: ${BANK_INFO.bank}
-Titular: ${BANK_INFO.holder}
-Tipo de cuenta: ${BANK_INFO.accountType}
-N° Cuenta: ${BANK_INFO.accountNumber}
-RUT: ${BANK_INFO.rut}
-Correo: ${BANK_INFO.email}
+Banco: BANCO POR DEFINIR
+Titular: AMERICAN BURGER
+Tipo de cuenta: Cuenta Corriente
+N° Cuenta: 000000000
+RUT: XX.XXX.XXX-X
+Correo: americanburgerarica@gmail.com
 Monto: ${money(total)}
 `.trim()
 
@@ -210,6 +184,8 @@ Monto: ${money(total)}
       })
 
       clearCart()
+      setCheckoutOpen(false)
+
       setCustomer({
         name: '',
         phone: '',
@@ -275,159 +251,6 @@ Monto: ${money(total)}
         />
       </section>
 
-      <section id="pedido" className="max-w-7xl mx-auto px-4 md:px-6 pb-24">
-        <form
-          onSubmit={submitOrder}
-          className="bg-neutral-900 border border-neutral-800 rounded-[32px] p-6 md:p-8 space-y-4"
-        >
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
-            <div>
-              <p className="text-yellow-400 font-black tracking-widest text-sm">
-                CHECKOUT
-              </p>
-              <h2 className="text-3xl md:text-4xl font-black">
-                Finalizar pedido
-              </h2>
-            </div>
-
-            <div className="text-left md:text-right">
-              <p className="text-neutral-400 font-bold">Total</p>
-              <p className="text-4xl font-black text-yellow-400">
-                {money(total)}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-4">
-            <input
-              value={customer.name}
-              onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
-              placeholder="Nombre"
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-            />
-
-            <input
-              value={formatChilePhone(customer.phone)}
-              onChange={(e) =>
-                setCustomer({ ...customer, phone: normalizeChilePhone(e.target.value) })
-              }
-              placeholder="+56 9 XXXX XXXX"
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-            />
-
-            <select
-              value={customer.deliveryType}
-              onChange={(e) =>
-                setCustomer({ ...customer, deliveryType: e.target.value })
-              }
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-            >
-              <option value="pickup">Retiro en local</option>
-              <option value="delivery">Delivery</option>
-            </select>
-
-            {customer.deliveryType === 'delivery' && (
-              <input
-                value={customer.address}
-                onChange={(e) =>
-                  setCustomer({ ...customer, address: e.target.value })
-                }
-                placeholder="Dirección"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-              />
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setCustomer({ ...customer, paymentMethod: 'cash' })}
-              className={`rounded-xl px-4 py-4 font-black border ${
-                customer.paymentMethod === 'cash'
-                  ? 'bg-yellow-400 text-black border-yellow-400'
-                  : 'bg-neutral-800 text-white border-neutral-700'
-              }`}
-            >
-              💵 Efectivo
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCustomer({ ...customer, paymentMethod: 'transfer' })}
-              className={`rounded-xl px-4 py-4 font-black border ${
-                customer.paymentMethod === 'transfer'
-                  ? 'bg-yellow-400 text-black border-yellow-400'
-                  : 'bg-neutral-800 text-white border-neutral-700'
-              }`}
-            >
-              🏦 Transferencia
-            </button>
-          </div>
-
-          {customer.paymentMethod === 'cash' && (
-            <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-3">
-              <label className="block font-black text-yellow-400">
-                ¿Con cuánto pagas?
-              </label>
-
-              <input
-                value={customer.cashAmount}
-                onChange={(e) =>
-                  setCustomer({ ...customer, cashAmount: onlyNumbers(e.target.value) })
-                }
-                placeholder="Ej: 20000"
-                className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-              />
-
-              {cashAmount > 0 && (
-                <p className="font-bold">
-                  Vuelto estimado:{' '}
-                  <span className="text-yellow-400">
-                    {money(Math.max(changeAmount, 0))}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-
-          {customer.paymentMethod === 'transfer' && (
-            <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-2">
-              <h3 className="font-black text-yellow-400">Datos para transferencia</h3>
-              <p>Banco: {BANK_INFO.bank}</p>
-              <p>Titular: {BANK_INFO.holder}</p>
-              <p>Tipo: {BANK_INFO.accountType}</p>
-              <p>Cuenta: {BANK_INFO.accountNumber}</p>
-              <p>RUT: {BANK_INFO.rut}</p>
-              <p>Correo: {BANK_INFO.email}</p>
-              <p className="font-black text-yellow-400">Monto: {money(total)}</p>
-
-              <button
-                type="button"
-                onClick={copyBankInfo}
-                className="w-full bg-yellow-400 text-black rounded-xl py-3 font-black"
-              >
-                Copiar datos bancarios
-              </button>
-            </div>
-          )}
-
-          <textarea
-            value={customer.notes}
-            onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
-            placeholder="Notas del pedido"
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-          />
-
-          <button
-            type="submit"
-            disabled={sending || cart.length === 0}
-            className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black py-5 rounded-2xl font-black text-xl"
-          >
-            {sending ? 'Enviando pedido...' : 'Enviar pedido al POS'}
-          </button>
-        </form>
-      </section>
-
       <FloatingCart
         itemCount={itemCount}
         total={total}
@@ -445,8 +268,21 @@ Monto: ${money(total)}
         onDecrease={decreaseItem}
         onContinue={() => {
           setCartOpen(false)
-          document.getElementById('pedido')?.scrollIntoView({ behavior: 'smooth' })
+          setCheckoutOpen(true)
         }}
+      />
+
+      <CheckoutDrawer
+        open={checkoutOpen}
+        customer={customer}
+        setCustomer={setCustomer}
+        subtotal={subtotal}
+        deliveryFee={deliveryFee}
+        total={total}
+        sending={sending}
+        onClose={() => setCheckoutOpen(false)}
+        onSubmit={submitOrder}
+        onCopyBankInfo={copyBankInfo}
       />
 
       <Footer />
