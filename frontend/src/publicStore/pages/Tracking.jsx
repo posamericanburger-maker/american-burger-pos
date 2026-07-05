@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import logo from '../../NNN.png'
+import { supabase } from '../../lib/supabase'
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
@@ -14,26 +15,10 @@ const money = (value) =>
   }).format(Number(value || 0))
 
 const steps = [
-  {
-    key: 'pending',
-    title: 'Recibido',
-    icon: '✅'
-  },
-  {
-    key: 'preparing',
-    title: 'Preparando',
-    icon: '👨‍🍳'
-  },
-  {
-    key: 'ready',
-    title: 'Listo',
-    icon: '📦'
-  },
-  {
-    key: 'completed',
-    title: 'Entregado',
-    icon: '🍔'
-  }
+  { key: 'pending', title: 'Recibido', icon: '✅' },
+  { key: 'preparing', title: 'Preparando', icon: '👨‍🍳' },
+  { key: 'ready', title: 'Listo', icon: '📦' },
+  { key: 'completed', title: 'Entregado', icon: '🍔' }
 ]
 
 const statusIndex = (status = '') => {
@@ -54,6 +39,7 @@ function Tracking() {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [liveMessage, setLiveMessage] = useState('')
 
   const loadOrder = async () => {
     try {
@@ -80,11 +66,34 @@ function Tracking() {
   useEffect(() => {
     loadOrder()
 
-    const interval = setInterval(() => {
-      loadOrder()
-    }, 8000)
+    const channel = supabase
+      .channel(`order-tracking-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${orderId}`
+        },
+        (payload) => {
+          setOrder((current) => ({
+            ...(current || {}),
+            ...(payload.new || {})
+          }))
 
-    return () => clearInterval(interval)
+          setLiveMessage('Estado actualizado en vivo')
+
+          setTimeout(() => {
+            setLiveMessage('')
+          }, 3000)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [orderId])
 
   const currentIndex = statusIndex(order?.status)
@@ -107,7 +116,7 @@ function Tracking() {
                 AMERICAN BURGER
               </h1>
               <p className="text-xs text-yellow-400 font-bold">
-                Seguimiento de pedido
+                Seguimiento en vivo
               </p>
             </div>
           </a>
@@ -132,6 +141,12 @@ function Tracking() {
           </div>
         ) : (
           <div className="bg-neutral-900 border border-white/10 rounded-[36px] p-6 md:p-10">
+            {liveMessage && (
+              <div className="mb-6 bg-yellow-400 text-black rounded-2xl px-5 py-4 font-black">
+                🔔 {liveMessage}
+              </div>
+            )}
+
             <p className="text-yellow-400 font-black tracking-widest text-sm">
               ESTADO DEL PEDIDO
             </p>
@@ -141,7 +156,7 @@ function Tracking() {
             </h2>
 
             <p className="text-neutral-400 mt-3">
-              Gracias por comprar en American Burger. Puedes dejar esta página abierta para ver el avance.
+              Puedes dejar esta página abierta. El estado se actualizará automáticamente.
             </p>
 
             <div className="mt-8 grid md:grid-cols-3 gap-4">
@@ -178,9 +193,9 @@ function Tracking() {
                     return (
                       <div
                         key={step.key}
-                        className={`rounded-3xl p-5 border text-center ${
+                        className={`rounded-3xl p-5 border text-center transition ${
                           active
-                            ? 'bg-yellow-400 text-black border-yellow-400'
+                            ? 'bg-yellow-400 text-black border-yellow-400 scale-[1.02]'
                             : 'bg-black/40 text-white border-white/10'
                         }`}
                       >
