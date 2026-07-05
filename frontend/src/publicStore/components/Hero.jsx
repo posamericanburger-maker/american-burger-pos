@@ -6,30 +6,46 @@ function Hero() {
       id="inicio"
       className="relative overflow-hidden bg-black border-b border-white/10"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_45%,rgba(218,41,28,.45),transparent_34%),radial-gradient(circle_at_85%_55%,rgba(255,199,44,.22),transparent_28%),linear-gradient(135deg,#020202_0%,#090000_45%,#270000_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,199,44,.18),transparent_28%),radial-gradient(circle_at_70%_60%,rgba(218,41,28,.45),transparent_36%),linear-gradient(135deg,#020202_0%,#090000_45%,#270000_100%)]" />
 
-      <div className="absolute inset-0 opacity-25 bg-[linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:44px_44px]" />
+      <div className="absolute inset-0 opacity-20 bg-[linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:44px_44px]" />
 
-      <div className="relative max-w-7xl mx-auto px-5 md:px-8 py-12 md:py-20">
+      <div className="relative max-w-7xl mx-auto px-5 md:px-8 py-10 md:py-20">
         <div className="grid lg:grid-cols-[1fr_0.9fr] gap-10 items-center">
-          <div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-black/70 px-4 py-3 shadow-2xl">
-              <img
-                src={logo}
-                alt="American Burger"
-                className="w-11 h-11 rounded-full bg-yellow-400 p-1"
-              />
 
-              <span className="text-white font-black">
-                American Burger Arica
-              </span>
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+              <div className="relative w-32 h-32 md:w-44 md:h-44 shrink-0">
+                <div className="absolute inset-0 rounded-full bg-yellow-400 blur-2xl opacity-70 animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-yellow-400 shadow-[0_0_60px_rgba(255,199,44,.9)]" />
+
+                <div className="relative w-full h-full rounded-full bg-yellow-400 p-2 border-4 border-yellow-300 shadow-2xl">
+                  <img
+                    src={logo}
+                    alt="American Burger"
+                    className="w-full h-full object-contain rounded-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-yellow-400 font-black tracking-[0.35em] text-xs md:text-sm">
+                  ARICA · CHILE
+                </p>
+
+                <h1 className="text-4xl md:text-6xl font-black text-white leading-none mt-2">
+                  AMERICAN
+                  <br />
+                  <span className="text-red-600">BURGER</span>
+                </h1>
+              </div>
             </div>
 
-            <p className="mt-8 text-red-500 font-black tracking-[0.22em] text-sm md:text-base">
+            <p className="mt-10 text-red-500 font-black tracking-[0.22em] text-sm md:text-base">
               ★ HECHAS COMO TIENEN QUE SER
             </p>
 
-            <h1 className="mt-4 text-[58px] sm:text-7xl md:text-8xl lg:text-[110px] font-black leading-[0.82] tracking-tight text-white">
+            <h2 className="mt-4 text-[56px] sm:text-7xl md:text-8xl lg:text-[105px] font-black leading-[0.82] tracking-tight text-white">
               SABOR
               <br />
               QUE
@@ -37,7 +53,7 @@ function Hero() {
               <span className="text-yellow-400">
                 TE ATRAPA
               </span>
-            </h1>
+            </h2>
 
             <p className="mt-7 text-lg md:text-2xl text-white/90 max-w-2xl leading-relaxed">
               Hamburguesas premium, papas crujientes y pollo crispy.
@@ -89,60 +105,6 @@ function Hero() {
             <div className="absolute bottom-6 right-2 md:right-10 bg-yellow-400 text-black px-6 py-4 rounded-3xl shadow-2xl rotate-3">
               <p className="text-xs font-black">COMBO</p>
               <p className="text-2xl font-black">+ PAPAS</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-10 grid md:grid-cols-4 gap-4 rounded-[28px] border border-white/10 bg-black/60 p-4 backdrop-blur">
-          {[
-            ['🍔', 'Ingredientes frescos', 'Calidad premium en cada preparación.'],
-            ['🛵', 'Entrega rápida', 'Tu pedido listo en el menor tiempo posible.'],
-            ['🛡️', 'Pago seguro', 'Efectivo o transferencia.'],
-            ['👍', 'Mejor calidad', 'Sabor americano que conquista Arica.']
-          ].map(([icon, title, text]) => (
-            <div key={title} className="flex items-center gap-4 p-4">
-              <div className="w-14 h-14 rounded-full border border-red-500 text-red-500 flex items-center justify-center text-2xl">
-                {icon}
-              </div>
-
-              <div>
-                <h3 className="font-black text-white">{title}</h3>
-                <p className="text-sm text-neutral-400">{text}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div
-          id="promos"
-          className="mt-6 overflow-hidden rounded-[28px] border border-white/10 bg-black/80"
-        >
-          <div className="grid md:grid-cols-[240px_1fr_260px] items-center">
-            <div className="bg-red-600 p-6 h-full flex items-center gap-4">
-              <div className="text-4xl">🏷️</div>
-              <div>
-                <p className="text-white font-black text-2xl leading-none">
-                  PROMO
-                </p>
-                <p className="text-yellow-400 font-black text-2xl leading-none">
-                  ONLINE
-                </p>
-              </div>
-            </div>
-
-            <div className="p-6 flex flex-col md:flex-row md:items-center md:justify-center gap-3 text-center">
-              <p className="text-3xl md:text-4xl font-black text-white">
-                ARMA TU COMBO
-              </p>
-
-              <p className="text-3xl md:text-4xl font-black text-yellow-400">
-                PAPAS + BEBIDA
-              </p>
-            </div>
-
-            <div className="bg-yellow-400 text-black p-6 text-center">
-              <p className="font-black">POR SOLO</p>
-              <p className="text-4xl font-black">$2.900</p>
             </div>
           </div>
         </div>
