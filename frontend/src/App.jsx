@@ -25,6 +25,7 @@ import Finance from './pages/Finance/Finance'
 
 // Public Store
 import PublicStore from './publicStore/PublicStore'
+import Tracking from './publicStore/pages/Tracking'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/tienda" element={<PublicStore />} />
+          <Route path="/seguimiento/:orderId" element={<Tracking />} />
 
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
