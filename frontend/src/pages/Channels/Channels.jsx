@@ -4,6 +4,9 @@ import Navbar from '../../components/Navbar'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://american-burger-pos-api-d8r1.onrender.com/api'
 const STORE_URL = 'https://american-burger-pos-web-mhc6.onrender.com/tienda'
+const WHATSAPP_NUMBER = '56930809265'
+const WHATSAPP_DISPLAY = '+56 9 3080 9265'
+const WHATSAPP_MESSAGE = 'Hola American Burger 🍔 quiero hacer un pedido.'
 
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
@@ -23,7 +26,7 @@ const Channels = () => {
     { key: 'pedidosya', name: 'PedidosYa', icon: '🛵', status: 'Desconectado' },
     { key: 'ubereats', name: 'Uber Eats', icon: '🚗', status: 'Desconectado' },
     { key: 'web', name: 'Página Web', icon: '🌐', status: 'Conectado' },
-    { key: 'whatsapp', name: 'WhatsApp', icon: '📱', status: 'Preparado' }
+    { key: 'whatsapp', name: 'WhatsApp', icon: '📱', status: 'Conectado' }
   ]
 
   const getToken = () =>
@@ -63,7 +66,6 @@ const Channels = () => {
 
   const webStats = useMemo(() => {
     const webOrders = orders.filter(isWebOrder)
-
     const today = new Date().toISOString().slice(0, 10)
 
     const todayOrders = webOrders.filter((order) =>
@@ -92,12 +94,15 @@ const Channels = () => {
     }
   }, [orders])
 
-  const copyStoreLink = async () => {
+  const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`
+  const whatsappPlainUrl = `https://wa.me/${WHATSAPP_NUMBER}`
+
+  const copyText = async (text, successMessage) => {
     try {
-      await navigator.clipboard.writeText(STORE_URL)
-      setMessage('Link de tienda copiado')
+      await navigator.clipboard.writeText(text)
+      setMessage(successMessage)
     } catch {
-      setMessage('No se pudo copiar el link')
+      setMessage('No se pudo copiar')
     }
   }
 
@@ -105,8 +110,17 @@ const Channels = () => {
     window.open(STORE_URL, '_blank')
   }
 
-  const openQr = () => {
+  const openStoreQr = () => {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=700x700&data=${encodeURIComponent(STORE_URL)}`
+    window.open(qrUrl, '_blank')
+  }
+
+  const openWhatsApp = () => {
+    window.open(whatsappUrl, '_blank')
+  }
+
+  const openWhatsAppQr = () => {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=700x700&data=${encodeURIComponent(whatsappUrl)}`
     window.open(qrUrl, '_blank')
   }
 
@@ -142,11 +156,11 @@ const Channels = () => {
                 </p>
 
                 <h2 className="text-3xl font-black mt-2">
-                  Tienda Online American Burger
+                  Tienda Online + WhatsApp
                 </h2>
 
                 <p className="text-gray-300 mt-2">
-                  Canal conectado al POS para recibir pedidos web directamente.
+                  Canales conectados para recibir pedidos web y conversaciones directas con clientes.
                 </p>
               </div>
 
@@ -161,27 +175,34 @@ const Channels = () => {
 
                 <button
                   type="button"
-                  onClick={copyStoreLink}
-                  className="bg-white text-black px-5 py-3 rounded-xl font-black"
+                  onClick={openWhatsApp}
+                  className="bg-green-500 text-white px-5 py-3 rounded-xl font-black"
                 >
-                  Copiar link
+                  💬 Abrir WhatsApp
                 </button>
 
                 <button
                   type="button"
-                  onClick={openQr}
-                  className="bg-red-600 text-white px-5 py-3 rounded-xl font-black"
+                  onClick={() => copyText(STORE_URL, 'Link de tienda copiado')}
+                  className="bg-white text-black px-5 py-3 rounded-xl font-black"
                 >
-                  Generar QR
+                  Copiar tienda
                 </button>
               </div>
             </div>
 
             <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4 mt-8">
               <div className="bg-white/10 border border-white/10 rounded-2xl p-5">
-                <p className="text-gray-300 font-bold">Estado</p>
+                <p className="text-gray-300 font-bold">Página Web</p>
                 <p className="text-green-400 text-2xl font-black mt-2">
-                  🟢 Conectado
+                  🟢 Conectada
+                </p>
+              </div>
+
+              <div className="bg-white/10 border border-white/10 rounded-2xl p-5">
+                <p className="text-gray-300 font-bold">WhatsApp</p>
+                <p className="text-green-400 text-2xl font-black mt-2">
+                  🟢 {WHATSAPP_DISPLAY}
                 </p>
               </div>
 
@@ -205,33 +226,22 @@ const Channels = () => {
                   {money(webStats.salesToday)}
                 </p>
               </div>
-
-              <div className="bg-white/10 border border-white/10 rounded-2xl p-5">
-                <p className="text-gray-300 font-bold">Total web</p>
-                <p className="text-yellow-400 text-3xl font-black mt-2">
-                  {webStats.totalWeb}
-                </p>
-              </div>
             </div>
 
-            <div className="mt-6 bg-white/10 border border-white/10 rounded-2xl p-5">
-              <p className="text-gray-300 font-bold">
-                URL pública
-              </p>
-
-              <p className="text-yellow-400 font-black break-all mt-2">
-                {STORE_URL}
-              </p>
-
-              {webStats.lastOrder && (
-                <p className="text-gray-300 mt-4">
-                  Último pedido web:{' '}
-                  <span className="text-white font-black">
-                    #{webStats.lastOrder.order_number || webStats.lastOrder.number || webStats.lastOrder.id}
-                  </span>{' '}
-                  — {money(webStats.lastOrder.total || webStats.lastOrder.total_amount || 0)}
+            <div className="mt-6 grid lg:grid-cols-2 gap-4">
+              <div className="bg-white/10 border border-white/10 rounded-2xl p-5">
+                <p className="text-gray-300 font-bold">URL pública tienda</p>
+                <p className="text-yellow-400 font-black break-all mt-2">
+                  {STORE_URL}
                 </p>
-              )}
+              </div>
+
+              <div className="bg-white/10 border border-white/10 rounded-2xl p-5">
+                <p className="text-gray-300 font-bold">Link WhatsApp</p>
+                <p className="text-green-400 font-black break-all mt-2">
+                  {whatsappPlainUrl}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -279,7 +289,7 @@ const Channels = () => {
 
                     <button
                       type="button"
-                      onClick={copyStoreLink}
+                      onClick={() => copyText(STORE_URL, 'Link de tienda copiado')}
                       className="bg-black text-yellow-400 rounded-xl px-5 py-3 font-bold"
                     >
                       Copiar link
@@ -287,10 +297,74 @@ const Channels = () => {
 
                     <button
                       type="button"
-                      onClick={openQr}
+                      onClick={openStoreQr}
                       className="bg-red-600 text-white rounded-xl px-5 py-3 font-bold"
                     >
                       Generar QR
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelected(null)}
+                      className="bg-gray-200 text-black rounded-xl px-5 py-3 font-bold"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </>
+              ) : selected.key === 'whatsapp' ? (
+                <>
+                  <p className="mt-3 text-gray-600">
+                    WhatsApp está conectado mediante enlace directo gratuito. Los clientes pueden escribir al número oficial de American Burger.
+                  </p>
+
+                  <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="border rounded-xl p-4">
+                      <p className="font-bold">Estado</p>
+                      <p className="text-green-600 font-black">Conectado</p>
+                    </div>
+
+                    <div className="border rounded-xl p-4">
+                      <p className="font-bold">Número</p>
+                      <p className="text-gray-700 font-black">{WHATSAPP_DISPLAY}</p>
+                    </div>
+
+                    <div className="border rounded-xl p-4">
+                      <p className="font-bold">Modo</p>
+                      <p className="text-gray-600">Link directo wa.me</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 border rounded-xl p-4">
+                    <p className="font-bold">Mensaje automático</p>
+                    <p className="text-gray-600 mt-2">
+                      {WHATSAPP_MESSAGE}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={openWhatsApp}
+                      className="bg-green-500 text-white rounded-xl px-5 py-3 font-bold"
+                    >
+                      Abrir WhatsApp
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => copyText(whatsappUrl, 'Link de WhatsApp copiado')}
+                      className="bg-black text-yellow-400 rounded-xl px-5 py-3 font-bold"
+                    >
+                      Copiar link
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={openWhatsAppQr}
+                      className="bg-red-600 text-white rounded-xl px-5 py-3 font-bold"
+                    >
+                      Generar QR WhatsApp
                     </button>
 
                     <button
