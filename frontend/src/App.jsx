@@ -23,11 +23,16 @@ import BusinessSettings from './pages/Settings/BusinessSettings'
 import Diagnostics from './pages/Diagnostics/Diagnostics'
 import Finance from './pages/Finance/Finance'
 
+// Public Store
+import PublicStore from './publicStore/PublicStore'
+
 function App() {
   return (
     <Router>
       <AuthProvider>
         <Routes>
+          <Route path="/tienda" element={<PublicStore />} />
+
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/pos/mostrador" element={<ProtectedRoute roles={['cajero', 'admin']}><POSMostrador /></ProtectedRoute>} />
@@ -47,6 +52,7 @@ function App() {
           <Route path="/usuarios" element={<ProtectedRoute roles={['admin']}><Users /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute roles={['admin']}><BusinessSettings /></ProtectedRoute>} />
           <Route path="/diagnostico" element={<ProtectedRoute roles={['admin']}><Diagnostics /></ProtectedRoute>} />
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </AuthProvider>
