@@ -14,17 +14,20 @@ const money = (value) => {
 
 const cleanPhone = (phone = '') => String(phone).replace(/[^0-9]/g, '')
 
-const isWebOrder = (order) => {
-  return String(order.notes || '').includes('[WEB]')
-}
+const isWebOrder = (order) => String(order.notes || '').includes('[WEB]')
+
+const getCustomerName = (order) =>
+  order.customer?.name || order.customer_name || 'Cliente'
+
+const getCustomerPhone = (order) =>
+  cleanPhone(order.customer_phone || order.customer?.phone || '')
 
 const openWhatsApp = (order) => {
-  const phone = cleanPhone(order.customer_phone || order.customer?.phone || '')
-
+  const phone = getCustomerPhone(order)
   if (!phone) return
 
   const text = encodeURIComponent(
-    `Hola ${order.customer_name || order.customer?.name || ''}, recibimos tu pedido en American Burger 🍔. Ya lo estamos preparando.`
+    `Hola ${getCustomerName(order)} 👋\n\nRecibimos tu pedido en American Burger 🍔.\nYa fue aceptado y comenzó su preparación.\n\nTiempo estimado: 20 a 30 minutos.`
   )
 
   window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
@@ -35,6 +38,8 @@ const Orders = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [newOrderModal, setNewOrderModal] = useState(null)
+
   const knownPendingIdsRef = useRef(new Set())
   const initializedRef = useRef(false)
 
@@ -51,21 +56,40 @@ const Orders = () => {
       const gainNode = audioContext.createGain()
 
       oscillator.type = 'sine'
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
-      oscillator.frequency.setValueAtTime(660, audioContext.currentTime + 0.2)
+      oscillator.frequency.setValueAtTime(920, audioContext.currentTime)
+      oscillator.frequency.setValueAtTime(680, audioContext.currentTime + 0.22)
+      oscillator.frequency.setValueAtTime(920, audioContext.currentTime + 0.44)
 
       gainNode.gain.setValueAtTime(0.001, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.4, audioContext.currentTime + 0.03)
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.7)
+      gainNode.gain.exponentialRampToValueAtTime(0.45, audioContext.currentTime + 0.03)
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.9)
 
       oscillator.connect(gainNode)
       gainNode.connect(audioContext.destination)
 
       oscillator.start()
-      oscillator.stop(audioContext.currentTime + 0.75)
+      oscillator.stop(audioContext.currentTime + 0.95)
     } catch (err) {
       console.warn('No se pudo reproducir alerta sonora', err)
     }
+  }
+
+  const normalizeOrders = (list = []) => {
+    return [...list].sort((a, b) => {
+      const aWeb = isWebOrder(a)
+      const bWeb = isWebOrder(b)
+
+      if (aWeb && !bWeb) return -1
+      if (!aWeb && bWeb) return 1
+
+      const aPending = String(a.status || '').toLowerCase() === 'pending'
+      const bPending = String(b.status || '').toLowerCase() === 'pending'
+
+      if (aPending && !bPending) return -1
+      if (!aPending && bPending) return 1
+
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0)
+    })
   }
 
   const loadOrders = async ({ silent = false } = {}) => {
@@ -90,28 +114,36 @@ const Orders = () => {
         data.items ||
         (Array.isArray(data) ? data : [])
 
+      const sortedList = normalizeOrders(list)
+
       const pendingIds = new Set(
-        list
+        sortedList
           .filter((order) => String(order.status || '').toLowerCase() === 'pending')
           .map((order) => order.id)
           .filter(Boolean)
       )
 
       if (initializedRef.current) {
-        const hasNewPending = [...pendingIds].some(
+        const newPendingId = [...pendingIds].find(
           (id) => !knownPendingIdsRef.current.has(id)
         )
 
-        if (hasNewPending) {
+        if (newPendingId) {
+          const newOrder = sortedList.find((order) => order.id === newPendingId)
+
           playAlertSound()
           setMessage('🔔 Nuevo pedido recibido')
+
+          if (newOrder && isWebOrder(newOrder)) {
+            setNewOrderModal(newOrder)
+          }
         }
       }
 
       knownPendingIdsRef.current = pendingIds
       initializedRef.current = true
 
-      setOrders(list)
+      setOrders(sortedList)
     } catch (err) {
       setError('No se pudieron cargar los pedidos')
     } finally {
@@ -124,7 +156,7 @@ const Orders = () => {
 
     const interval = setInterval(() => {
       loadOrders({ silent: true })
-    }, 15000)
+    }, 8000)
 
     return () => clearInterval(interval)
   }, [])
@@ -143,7 +175,7 @@ const Orders = () => {
       })
 
       setMessage('Estado actualizado')
-      loadOrders()
+      await loadOrders()
     } catch {
       setError('No se pudo actualizar el pedido')
     }
@@ -151,12 +183,16 @@ const Orders = () => {
 
   const acceptOrder = async (order) => {
     await updateStatus(order.id, 'preparing')
+    setNewOrderModal(null)
 
-    const phone = cleanPhone(order.customer_phone || order.customer?.phone || '')
-
-    if (phone) {
+    if (getCustomerPhone(order)) {
       openWhatsApp(order)
     }
+  }
+
+  const rejectOrder = async (order) => {
+    await updateStatus(order.id, 'cancelled')
+    setNewOrderModal(null)
   }
 
   return (
@@ -208,153 +244,219 @@ const Orders = () => {
                 No existen pedidos registrados.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b text-gray-500">
-                      <th className="py-3">Pedido</th>
-                      <th>Fecha</th>
-                      <th>Tipo</th>
-                      <th>Cliente</th>
-                      <th>Estado</th>
-                      <th>Total</th>
-                      <th>Canal</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {orders.map((order, index) => {
+                  const web = isWebOrder(order)
+                  const phone = getCustomerPhone(order)
+                  const status = String(order.status || 'pending').toLowerCase()
 
-                  <tbody>
-                    {orders.map((order, index) => {
-                      const web = isWebOrder(order)
-                      const phone = cleanPhone(order.customer_phone || order.customer?.phone || '')
+                  return (
+                    <article
+                      key={order.id || index}
+                      className={`rounded-2xl border p-5 ${
+                        web && status === 'pending'
+                          ? 'bg-yellow-50 border-yellow-400'
+                          : 'bg-white border-gray-200'
+                      }`}
+                    >
+                      <div className="flex justify-between gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500 font-bold">
+                            Pedido
+                          </p>
 
-                      return (
-                        <tr
-                          key={order.id || index}
-                          className={`border-b ${
-                            web && String(order.status).toLowerCase() === 'pending'
-                              ? 'bg-yellow-50 hover:bg-yellow-100'
-                              : 'hover:bg-gray-50'
-                          }`}
-                        >
-                          <td className="py-3 font-semibold">
+                          <h3 className="text-2xl font-black">
                             #{order.order_number || order.number || index + 1}
-                          </td>
+                          </h3>
+                        </div>
 
-                          <td>
-                            {new Date(
-                              order.created_at || Date.now()
-                            ).toLocaleString('es-CL')}
-                          </td>
+                        {web ? (
+                          <span className="bg-yellow-400 text-black px-3 py-1 h-fit rounded-full text-xs font-black">
+                            WEB
+                          </span>
+                        ) : (
+                          <span className="bg-gray-200 text-gray-700 px-3 py-1 h-fit rounded-full text-xs font-bold">
+                            POS
+                          </span>
+                        )}
+                      </div>
 
-                          <td>
-                            {order.type ||
-                              order.order_type ||
-                              'Mostrador'}
-                          </td>
+                      <div className="mt-4 space-y-2">
+                        <p>
+                          <span className="font-bold">Cliente:</span>{' '}
+                          {getCustomerName(order)}
+                        </p>
 
-                          <td>
-                            <div className="font-semibold">
-                              {order.customer?.name ||
-                                order.customer_name ||
-                                '-'}
-                            </div>
+                        {phone && (
+                          <p>
+                            <span className="font-bold">Teléfono:</span> +{phone}
+                          </p>
+                        )}
 
-                            {phone && (
-                              <div className="text-xs text-gray-500">
-                                +{phone}
-                              </div>
-                            )}
-                          </td>
+                        <p>
+                          <span className="font-bold">Tipo:</span>{' '}
+                          {order.type || order.order_type || 'Mostrador'}
+                        </p>
 
-                          <td>
-                            <span className="font-bold">
-                              {order.status || 'Pendiente'}
-                            </span>
-                          </td>
+                        {order.customer_address && (
+                          <p>
+                            <span className="font-bold">Dirección:</span>{' '}
+                            {order.customer_address}
+                          </p>
+                        )}
 
-                          <td className="font-bold">
-                            {money(
-                              order.total ||
-                                order.total_amount ||
-                                0
-                            )}
-                          </td>
+                        <p>
+                          <span className="font-bold">Estado:</span>{' '}
+                          {order.status || 'Pendiente'}
+                        </p>
 
-                          <td>
-                            {web ? (
-                              <span className="bg-yellow-400 text-black px-3 py-1 rounded-full text-xs font-black">
-                                WEB
-                              </span>
-                            ) : (
-                              <span className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-bold">
-                                POS
-                              </span>
-                            )}
-                          </td>
+                        <p className="text-2xl font-black text-green-700">
+                          {money(order.total || order.total_amount || 0)}
+                        </p>
 
-                          <td>
-                            <div className="flex flex-wrap gap-2">
-                              <select
-                                className="input"
-                                value={order.status || 'pending'}
-                                onChange={(e) =>
-                                  updateStatus(
-                                    order.id,
-                                    e.target.value
-                                  )
-                                }
-                              >
-                                <option value="pending">
-                                  Pendiente
-                                </option>
+                        {order.notes && (
+                          <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                            {order.notes}
+                          </p>
+                        )}
+                      </div>
 
-                                <option value="preparing">
-                                  Preparando
-                                </option>
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        <select
+                          className="input"
+                          value={order.status || 'pending'}
+                          onChange={(e) => updateStatus(order.id, e.target.value)}
+                        >
+                          <option value="pending">Pendiente</option>
+                          <option value="preparing">Preparando</option>
+                          <option value="ready">Listo</option>
+                          <option value="completed">Entregado</option>
+                          <option value="cancelled">Cancelado</option>
+                        </select>
 
-                                <option value="ready">
-                                  Listo
-                                </option>
+                        {status === 'pending' && (
+                          <button
+                            onClick={() => acceptOrder(order)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-bold"
+                          >
+                            Aceptar
+                          </button>
+                        )}
 
-                                <option value="completed">
-                                  Entregado
-                                </option>
+                        {status === 'pending' && (
+                          <button
+                            onClick={() => rejectOrder(order)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold"
+                          >
+                            Rechazar
+                          </button>
+                        )}
 
-                                <option value="cancelled">
-                                  Cancelado
-                                </option>
-                              </select>
-
-                              {String(order.status || '').toLowerCase() === 'pending' && (
-                                <button
-                                  onClick={() => acceptOrder(order)}
-                                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-bold"
-                                >
-                                  Aceptar
-                                </button>
-                              )}
-
-                              {phone && (
-                                <button
-                                  onClick={() => openWhatsApp(order)}
-                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-bold"
-                                >
-                                  WhatsApp
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                        {phone && (
+                          <button
+                            onClick={() => openWhatsApp(order)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-bold"
+                          >
+                            WhatsApp
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {newOrderModal && (
+        <div className="fixed inset-0 z-[999] bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden">
+            <div className="bg-black text-white p-6">
+              <p className="text-yellow-400 font-black tracking-widest">
+                🔔 NUEVO PEDIDO WEB
+              </p>
+
+              <h2 className="text-3xl font-black mt-2">
+                Pedido #{newOrderModal.order_number || newOrderModal.number || 'nuevo'}
+              </h2>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p>
+                <span className="font-black">Cliente:</span>{' '}
+                {getCustomerName(newOrderModal)}
+              </p>
+
+              {getCustomerPhone(newOrderModal) && (
+                <p>
+                  <span className="font-black">Teléfono:</span> +{getCustomerPhone(newOrderModal)}
+                </p>
+              )}
+
+              <p>
+                <span className="font-black">Tipo:</span>{' '}
+                {newOrderModal.type || newOrderModal.order_type || 'Pedido web'}
+              </p>
+
+              {newOrderModal.customer_address && (
+                <p>
+                  <span className="font-black">Dirección:</span>{' '}
+                  {newOrderModal.customer_address}
+                </p>
+              )}
+
+              <p>
+                <span className="font-black">Estado:</span>{' '}
+                {newOrderModal.status || 'Pendiente'}
+              </p>
+
+              <p className="text-4xl font-black text-green-700">
+                {money(newOrderModal.total || newOrderModal.total_amount || 0)}
+              </p>
+
+              {newOrderModal.notes && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-4 text-sm">
+                  {newOrderModal.notes}
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-gray-50 flex flex-wrap gap-3">
+              <button
+                onClick={() => acceptOrder(newOrderModal)}
+                className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-black"
+              >
+                Aceptar
+              </button>
+
+              <button
+                onClick={() => rejectOrder(newOrderModal)}
+                className="bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-xl font-black"
+              >
+                Rechazar
+              </button>
+
+              {getCustomerPhone(newOrderModal) && (
+                <button
+                  onClick={() => openWhatsApp(newOrderModal)}
+                  className="bg-green-500 hover:bg-green-600 text-white px-5 py-3 rounded-xl font-black"
+                >
+                  WhatsApp
+                </button>
+              )}
+
+              <button
+                onClick={() => setNewOrderModal(null)}
+                className="bg-gray-200 hover:bg-gray-300 text-black px-5 py-3 rounded-xl font-black"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
