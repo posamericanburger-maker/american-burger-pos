@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createPublicOrder, getPublicProducts } from '../publicStoreApi'
+import { useMemo, useState } from 'react'
+import { createPublicOrder } from '../publicStoreApi'
+
 import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
+import PromotionBanner from '../components/PromotionBanner'
+import SearchBar from '../components/SearchBar'
 import CategoryTabs from '../components/CategoryTabs'
 import ProductGrid from '../components/ProductGrid'
+import FloatingCart from '../components/FloatingCart'
+import CartDrawer from '../components/CartDrawer'
+import Footer from '../components/Footer'
+
+import { useCart } from '../hooks/useCart'
+import { useProducts } from '../hooks/useProducts'
 
 const BANK_INFO = {
   bank: 'BANCO POR DEFINIR',
@@ -56,10 +65,28 @@ const buildFinalPhone = (value = '') => {
 }
 
 function Home() {
-  const [products, setProducts] = useState([])
-  const [cart, setCart] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState('TODOS')
-  const [loading, setLoading] = useState(true)
+  const {
+    filteredProducts,
+    categories,
+    selectedCategory,
+    setSelectedCategory,
+    loading,
+    error
+  } = useProducts()
+
+  const {
+    cart,
+    cartOpen,
+    setCartOpen,
+    addToCart,
+    decreaseItem,
+    increaseItem,
+    clearCart,
+    subtotal,
+    itemCount
+  } = useCart()
+
+  const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
   const [customer, setCustomer] = useState({
@@ -72,94 +99,19 @@ function Home() {
     notes: ''
   })
 
-  useEffect(() => {
-    loadProducts()
-  }, [])
+  const searchedProducts = useMemo(() => {
+    const term = search.trim().toLowerCase()
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true)
-      const data = await getPublicProducts()
-      setProducts(data)
-    } catch (error) {
-      console.error('Error cargando productos:', error)
-      setMessage('No se pudieron cargar los productos')
-    } finally {
-      setLoading(false)
-    }
-  }
+    if (!term) return filteredProducts
 
-  const categories = useMemo(() => {
-    const list = products.map((product) => product.category_name || 'Productos')
-    return ['TODOS', ...new Set(list)]
-  }, [products])
-
-  const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'TODOS') return products
-
-    return products.filter(
-      (product) => (product.category_name || 'Productos') === selectedCategory
-    )
-  }, [products, selectedCategory])
-
-  const addToCart = (product) => {
-    setMessage('')
-
-    setCart((current) => {
-      const exists = current.find((item) => item.id === product.id)
-
-      if (exists) {
-        return current.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      }
-
-      return [
-        ...current,
-        {
-          id: product.id,
-          product_id: product.id,
-          name: product.name,
-          product_name: product.name,
-          category_name: product.category_name,
-          price: Number(product.price || 0),
-          unit_price: Number(product.price || 0),
-          quantity: 1
-        }
-      ]
-    })
-  }
-
-  const decreaseItem = (id) => {
-    setCart((current) =>
-      current
-        .map((item) =>
-          item.id === id
-            ? { ...item, quantity: item.quantity - 1 }
-            : item
-        )
-        .filter((item) => item.quantity > 0)
-    )
-  }
-
-  const increaseItem = (id) => {
-    setCart((current) =>
-      current.map((item) =>
-        item.id === id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
+    return filteredProducts.filter((product) => {
+      return (
+        String(product.name || '').toLowerCase().includes(term) ||
+        String(product.description || '').toLowerCase().includes(term) ||
+        String(product.category_name || '').toLowerCase().includes(term)
       )
-    )
-  }
-
-  const subtotal = useMemo(() => {
-    return cart.reduce(
-      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
-      0
-    )
-  }, [cart])
+    })
+  }, [filteredProducts, search])
 
   const deliveryFee = customer.deliveryType === 'delivery' ? 1500 : 0
   const total = subtotal + deliveryFee
@@ -257,7 +209,7 @@ Monto: ${money(total)}
         total
       })
 
-      setCart([])
+      clearCart()
       setCustomer({
         name: '',
         phone: '',
@@ -281,6 +233,7 @@ Monto: ${money(total)}
     <div className="min-h-screen bg-black text-white">
       <Navbar />
       <Hero />
+      <PromotionBanner />
 
       <CategoryTabs
         categories={categories}
@@ -289,7 +242,7 @@ Monto: ${money(total)}
       />
 
       <section id="menu" className="max-w-7xl mx-auto px-4 md:px-6 py-14 md:py-20">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
           <div>
             <p className="text-yellow-400 font-black tracking-widest text-sm">
               MENÚ ONLINE
@@ -300,100 +253,52 @@ Monto: ${money(total)}
             </h2>
 
             <p className="text-neutral-400 mt-3">
-              Productos reales conectados directamente a tu POS.
+              Productos conectados directamente al POS American Burger.
             </p>
           </div>
 
-          <div className="bg-neutral-900 border border-white/10 rounded-2xl px-5 py-4">
-            <p className="text-sm text-neutral-400">Productos disponibles</p>
-            <p className="text-2xl font-black text-yellow-400">
-              {filteredProducts.length}
-            </p>
+          <div className="w-full md:w-[420px]">
+            <SearchBar value={search} onChange={setSearch} />
           </div>
         </div>
 
-        {message && (
+        {(message || error) && (
           <div className="mb-8 bg-yellow-400 text-black rounded-2xl px-5 py-4 font-black">
-            {message}
+            {message || error}
           </div>
         )}
 
         <ProductGrid
-          products={filteredProducts}
+          products={searchedProducts}
           loading={loading}
           onAdd={addToCart}
         />
       </section>
 
       <section id="pedido" className="max-w-7xl mx-auto px-4 md:px-6 pb-24">
-        <div className="grid lg:grid-cols-2 gap-8">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8">
-            <h2 className="text-3xl font-black mb-6">Tu pedido</h2>
+        <form
+          onSubmit={submitOrder}
+          className="bg-neutral-900 border border-neutral-800 rounded-[32px] p-6 md:p-8 space-y-4"
+        >
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
+            <div>
+              <p className="text-yellow-400 font-black tracking-widest text-sm">
+                CHECKOUT
+              </p>
+              <h2 className="text-3xl md:text-4xl font-black">
+                Finalizar pedido
+              </h2>
+            </div>
 
-            {cart.length === 0 ? (
-              <p className="text-neutral-400">Aún no agregaste productos.</p>
-            ) : (
-              <div className="space-y-4">
-                {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex justify-between items-center border-b border-neutral-800 pb-4"
-                  >
-                    <div>
-                      <h3 className="font-black">{item.name}</h3>
-                      <p className="text-neutral-400">
-                        {money(item.price)} x {item.quantity}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => decreaseItem(item.id)}
-                        className="bg-neutral-700 w-9 h-9 rounded-full font-black"
-                      >
-                        -
-                      </button>
-
-                      <span className="font-black">{item.quantity}</span>
-
-                      <button
-                        type="button"
-                        onClick={() => increaseItem(item.id)}
-                        className="bg-neutral-700 w-9 h-9 rounded-full font-black"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="pt-6 space-y-2">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <strong>{money(subtotal)}</strong>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span>Delivery</span>
-                    <strong>{money(deliveryFee)}</strong>
-                  </div>
-
-                  <div className="flex justify-between text-3xl text-yellow-400 font-black">
-                    <span>Total</span>
-                    <strong>{money(total)}</strong>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="text-left md:text-right">
+              <p className="text-neutral-400 font-bold">Total</p>
+              <p className="text-4xl font-black text-yellow-400">
+                {money(total)}
+              </p>
+            </div>
           </div>
 
-          <form
-            onSubmit={submitOrder}
-            className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 space-y-4"
-          >
-            <h2 className="text-3xl font-black mb-4">Datos del cliente</h2>
-
+          <div className="grid lg:grid-cols-2 gap-4">
             <input
               value={customer.name}
               onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
@@ -431,97 +336,120 @@ Monto: ${money(total)}
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
               />
             )}
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setCustomer({ ...customer, paymentMethod: 'cash' })}
-                className={`rounded-xl px-4 py-4 font-black border ${
-                  customer.paymentMethod === 'cash'
-                    ? 'bg-yellow-400 text-black border-yellow-400'
-                    : 'bg-neutral-800 text-white border-neutral-700'
-                }`}
-              >
-                💵 Efectivo
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCustomer({ ...customer, paymentMethod: 'transfer' })}
-                className={`rounded-xl px-4 py-4 font-black border ${
-                  customer.paymentMethod === 'transfer'
-                    ? 'bg-yellow-400 text-black border-yellow-400'
-                    : 'bg-neutral-800 text-white border-neutral-700'
-                }`}
-              >
-                🏦 Transferencia
-              </button>
-            </div>
-
-            {customer.paymentMethod === 'cash' && (
-              <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-3">
-                <label className="block font-black text-yellow-400">
-                  ¿Con cuánto pagas?
-                </label>
-
-                <input
-                  value={customer.cashAmount}
-                  onChange={(e) =>
-                    setCustomer({ ...customer, cashAmount: onlyNumbers(e.target.value) })
-                  }
-                  placeholder="Ej: 20000"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-                />
-
-                {cashAmount > 0 && (
-                  <p className="font-bold">
-                    Vuelto estimado:{' '}
-                    <span className="text-yellow-400">
-                      {money(Math.max(changeAmount, 0))}
-                    </span>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {customer.paymentMethod === 'transfer' && (
-              <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-2">
-                <h3 className="font-black text-yellow-400">Datos para transferencia</h3>
-                <p>Banco: {BANK_INFO.bank}</p>
-                <p>Titular: {BANK_INFO.holder}</p>
-                <p>Tipo: {BANK_INFO.accountType}</p>
-                <p>Cuenta: {BANK_INFO.accountNumber}</p>
-                <p>RUT: {BANK_INFO.rut}</p>
-                <p>Correo: {BANK_INFO.email}</p>
-                <p className="font-black text-yellow-400">Monto: {money(total)}</p>
-
-                <button
-                  type="button"
-                  onClick={copyBankInfo}
-                  className="w-full bg-yellow-400 text-black rounded-xl py-3 font-black"
-                >
-                  Copiar datos bancarios
-                </button>
-              </div>
-            )}
-
-            <textarea
-              value={customer.notes}
-              onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
-              placeholder="Notas del pedido"
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setCustomer({ ...customer, paymentMethod: 'cash' })}
+              className={`rounded-xl px-4 py-4 font-black border ${
+                customer.paymentMethod === 'cash'
+                  ? 'bg-yellow-400 text-black border-yellow-400'
+                  : 'bg-neutral-800 text-white border-neutral-700'
+              }`}
+            >
+              💵 Efectivo
+            </button>
 
             <button
-              type="submit"
-              disabled={sending || cart.length === 0}
-              className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black py-5 rounded-2xl font-black text-xl"
+              type="button"
+              onClick={() => setCustomer({ ...customer, paymentMethod: 'transfer' })}
+              className={`rounded-xl px-4 py-4 font-black border ${
+                customer.paymentMethod === 'transfer'
+                  ? 'bg-yellow-400 text-black border-yellow-400'
+                  : 'bg-neutral-800 text-white border-neutral-700'
+              }`}
             >
-              {sending ? 'Enviando pedido...' : 'Enviar pedido al POS'}
+              🏦 Transferencia
             </button>
-          </form>
-        </div>
+          </div>
+
+          {customer.paymentMethod === 'cash' && (
+            <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-3">
+              <label className="block font-black text-yellow-400">
+                ¿Con cuánto pagas?
+              </label>
+
+              <input
+                value={customer.cashAmount}
+                onChange={(e) =>
+                  setCustomer({ ...customer, cashAmount: onlyNumbers(e.target.value) })
+                }
+                placeholder="Ej: 20000"
+                className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
+              />
+
+              {cashAmount > 0 && (
+                <p className="font-bold">
+                  Vuelto estimado:{' '}
+                  <span className="text-yellow-400">
+                    {money(Math.max(changeAmount, 0))}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {customer.paymentMethod === 'transfer' && (
+            <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-4 space-y-2">
+              <h3 className="font-black text-yellow-400">Datos para transferencia</h3>
+              <p>Banco: {BANK_INFO.bank}</p>
+              <p>Titular: {BANK_INFO.holder}</p>
+              <p>Tipo: {BANK_INFO.accountType}</p>
+              <p>Cuenta: {BANK_INFO.accountNumber}</p>
+              <p>RUT: {BANK_INFO.rut}</p>
+              <p>Correo: {BANK_INFO.email}</p>
+              <p className="font-black text-yellow-400">Monto: {money(total)}</p>
+
+              <button
+                type="button"
+                onClick={copyBankInfo}
+                className="w-full bg-yellow-400 text-black rounded-xl py-3 font-black"
+              >
+                Copiar datos bancarios
+              </button>
+            </div>
+          )}
+
+          <textarea
+            value={customer.notes}
+            onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
+            placeholder="Notas del pedido"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 outline-none"
+          />
+
+          <button
+            type="submit"
+            disabled={sending || cart.length === 0}
+            className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black py-5 rounded-2xl font-black text-xl"
+          >
+            {sending ? 'Enviando pedido...' : 'Enviar pedido al POS'}
+          </button>
+        </form>
       </section>
+
+      <FloatingCart
+        itemCount={itemCount}
+        total={total}
+        onClick={() => setCartOpen(true)}
+      />
+
+      <CartDrawer
+        open={cartOpen}
+        cart={cart}
+        subtotal={subtotal}
+        deliveryFee={deliveryFee}
+        total={total}
+        onClose={() => setCartOpen(false)}
+        onIncrease={increaseItem}
+        onDecrease={decreaseItem}
+        onContinue={() => {
+          setCartOpen(false)
+          document.getElementById('pedido')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+      />
+
+      <Footer />
     </div>
   )
 }
