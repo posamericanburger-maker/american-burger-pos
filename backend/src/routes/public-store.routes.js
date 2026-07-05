@@ -215,7 +215,6 @@ router.post('/orders', async (req, res) => {
         customer_address: customer_address || null,
         notes: notes ? `[WEB] ${notes}` : '[WEB]',
         source: 'web',
-        channel: 'web',
         user_id: null
       })
       .select()
