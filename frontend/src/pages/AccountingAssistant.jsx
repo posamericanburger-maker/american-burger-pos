@@ -23,6 +23,38 @@ const cleanSupplierName = (supplier) =>
   supplier?.razon_social ||
   'Proveedor'
 
+const getToken = () =>
+  localStorage.getItem('token') ||
+  localStorage.getItem('authToken') ||
+  localStorage.getItem('access_token') ||
+  ''
+
+const apiRequest = async (path, options = {}) => {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(options.headers || {})
+    }
+  })
+
+  const text = await res.text()
+  let data = null
+
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = { message: text }
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || 'Error de conexión')
+  }
+
+  return data
+}
+
 const AccountingAssistant = () => {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [dashboard, setDashboard] = useState(null)
@@ -49,52 +81,19 @@ const AccountingAssistant = () => {
 
   const [form, setForm] = useState(emptyForm)
 
-  const getToken = () =>
-    localStorage.getItem('token') ||
-    localStorage.getItem('authToken') ||
-    localStorage.getItem('access_token') ||
-    ''
-
-  const request = async (path, options = {}) => {
-    const res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${getToken()}`,
-        ...(options.headers || {})
-      }
-    })
-
-    const text = await res.text()
-    let data = null
-
-    try {
-      data = text ? JSON.parse(text) : null
-    } catch {
-      data = { message: text }
-    }
-
-    if (!res.ok) {
-      throw new Error(data?.message || data?.error || 'Error de conexión')
-    }
-
-    return data
-  }
-
   const loadData = async () => {
     try {
       setLoading(true)
       setError('')
 
       const [dashboardData, expensesData, suppliersData] = await Promise.all([
-        request('/accounting/dashboard'),
-        request('/accounting/expenses'),
-        request('/suppliers')
+        apiRequest('/accounting/dashboard'),
+        apiRequest('/accounting/expenses'),
+        apiRequest('/suppliers')
       ])
 
       setDashboard(dashboardData)
       setExpenses(Array.isArray(expensesData) ? expensesData : [])
-
       setSuppliers(
         Array.isArray(suppliersData)
           ? suppliersData
@@ -116,7 +115,6 @@ const AccountingAssistant = () => {
     const isInvoice = form.document_type === 'FACTURA'
     const iva = isInvoice ? ivaFromGross(total) : 0
     const net = total - iva
-
     return { total, iva, net }
   }, [form.total_amount, form.document_type])
 
@@ -204,13 +202,13 @@ const AccountingAssistant = () => {
       }
 
       if (editingId) {
-        await request(`/accounting/expenses/${editingId}`, {
+        await apiRequest(`/accounting/expenses/${editingId}`, {
           method: 'PUT',
           body: JSON.stringify(payload)
         })
         setMessage('Gasto actualizado correctamente')
       } else {
-        await request('/accounting/expenses', {
+        await apiRequest('/accounting/expenses', {
           method: 'POST',
           body: JSON.stringify(payload)
         })
@@ -252,7 +250,7 @@ const AccountingAssistant = () => {
       setError('')
       setMessage('')
 
-      await request(`/accounting/expenses/${id}`, {
+      await apiRequest(`/accounting/expenses/${id}`, {
         method: 'DELETE'
       })
 
@@ -777,15 +775,156 @@ function TaxCenter({ totals, expenses }) {
 }
 
 function FoodCost() {
+  const [data, setData] = useState(null)
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [loadingFoodCost, setLoadingFoodCost] = useState(true)
+  const [errorFoodCost, setErrorFoodCost] = useState('')
+
+  const loadFoodCost = async () => {
+    try {
+      setLoadingFoodCost(true)
+      setErrorFoodCost('')
+
+      const result = await apiRequest('/accounting/food-cost')
+
+      setData(result)
+      setSelectedProduct(result?.products?.[0] || null)
+    } catch (err) {
+      setErrorFoodCost(err.message || 'No se pudo cargar Food Cost')
+    } finally {
+      setLoadingFoodCost(false)
+    }
+  }
+
+  useEffect(() => {
+    loadFoodCost()
+  }, [])
+
+  const products = data?.products || []
+  const summary = data?.summary || {}
+
+  const statusClass = (level) => {
+    if (level === 'red') return 'bg-red-100 text-red-700 border-red-300'
+    if (level === 'yellow') return 'bg-yellow-100 text-yellow-700 border-yellow-300'
+    if (level === 'green') return 'bg-green-100 text-green-700 border-green-300'
+    return 'bg-gray-100 text-gray-700 border-gray-300'
+  }
+
   return (
-    <Panel title="🍔 Food Cost" subtitle="Costo de ingredientes por producto.">
-      <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-5">
-        <h3 className="font-black text-xl">Próxima integración</h3>
-        <p className="mt-2">
-          Este módulo se conectará con recetas, inventario y productos para calcular el costo real
-          de cada hamburguesa, combo, papas, alitas y bebida.
-        </p>
-      </div>
+    <Panel title="🍔 Food Cost" subtitle="Costo de ingredientes por producto conectado a recetas e inventario.">
+      {loadingFoodCost ? (
+        <div className="bg-white border rounded-xl p-5 font-bold">
+          Cargando Food Cost...
+        </div>
+      ) : errorFoodCost ? (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-5 py-4 rounded-xl font-bold">
+          {errorFoodCost}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <MiniBox title="Productos" value={summary.products_count || 0} />
+            <MiniBox title="Con costo" value={summary.products_with_cost || 0} />
+            <MiniBox title="Food Cost Prom." value={`${summary.average_food_cost || 0}%`} />
+            <MiniBox title="Críticos" value={summary.critical_count || 0} />
+            <MiniBox title="Revisar" value={summary.review_count || 0} />
+          </div>
+
+          {products.length === 0 ? (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-5">
+              <h3 className="font-black text-xl">Sin productos para calcular</h3>
+              <p className="mt-2">
+                Crea productos con recetas e ingresa costos unitarios en inventario.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+              <div className="xl:col-span-2 bg-white border rounded-2xl overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-black text-yellow-400">
+                    <tr>
+                      <th className="py-4 px-4">Producto</th>
+                      <th className="px-4">Precio</th>
+                      <th className="px-4">Costo</th>
+                      <th className="px-4">Food Cost</th>
+                      <th className="px-4">Margen</th>
+                      <th className="px-4">Estado</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {products.map((product) => (
+                      <tr
+                        key={product.id}
+                        onClick={() => setSelectedProduct(product)}
+                        className={`border-b hover:bg-yellow-50 cursor-pointer ${
+                          selectedProduct?.id === product.id ? 'bg-yellow-50' : ''
+                        }`}
+                      >
+                        <td className="py-4 px-4">
+                          <p className="font-black">{product.name}</p>
+                          <p className="text-sm text-gray-500">{product.category}</p>
+                        </td>
+                        <td className="px-4 font-bold">{money(product.price)}</td>
+                        <td className="px-4 font-bold">{money(product.recipe_cost)}</td>
+                        <td className="px-4 font-black">{product.food_cost_percent}%</td>
+                        <td className="px-4 font-black">{money(product.margin)}</td>
+                        <td className="px-4">
+                          <span className={`border px-3 py-1 rounded-full text-sm font-black ${statusClass(product.level)}`}>
+                            {product.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-white border rounded-2xl p-5">
+                {selectedProduct ? (
+                  <>
+                    <h3 className="text-2xl font-black">{selectedProduct.name}</h3>
+                    <p className="text-gray-500">{selectedProduct.category}</p>
+
+                    <div className="grid grid-cols-1 gap-3 mt-4">
+                      <MiniBox title="Precio venta" value={money(selectedProduct.price)} />
+                      <MiniBox title="Costo receta" value={money(selectedProduct.recipe_cost)} />
+                      <MiniBox title="Food Cost" value={`${selectedProduct.food_cost_percent}%`} />
+                      <MiniBox title="Margen" value={money(selectedProduct.margin)} />
+                    </div>
+
+                    <h4 className="text-xl font-black mt-6 mb-3">Ingredientes</h4>
+
+                    {selectedProduct.ingredients?.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedProduct.ingredients.map((ingredient) => (
+                          <div key={ingredient.id} className="border rounded-xl p-3 bg-gray-50">
+                            <div className="flex justify-between gap-3">
+                              <div>
+                                <p className="font-black">{ingredient.name}</p>
+                                <p className="text-sm text-gray-500">
+                                  {ingredient.quantity} {ingredient.unit} × {money(ingredient.unit_cost)}
+                                </p>
+                              </div>
+                              <p className="font-black">{money(ingredient.total_cost)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
+                        Este producto no tiene receta cargada.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-gray-500">Selecciona un producto.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </Panel>
   )
 }
