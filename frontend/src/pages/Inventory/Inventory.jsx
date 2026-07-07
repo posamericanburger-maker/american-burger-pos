@@ -6,6 +6,13 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   'https://american-burger-pos-api-d8r1.onrender.com/api'
 
+const money = (value) =>
+  new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    maximumFractionDigits: 0
+  }).format(Number(value || 0))
+
 const getToken = () =>
   localStorage.getItem('token') ||
   localStorage.getItem('authToken') ||
@@ -28,20 +35,24 @@ const Inventory = () => {
   const [movements, setMovements] = useState([])
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
-
   const [editingId, setEditingId] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
     stock: '',
     min_stock: '',
-    unit: 'unid.'
+    unit: 'unid.',
+    unit_cost: '',
+    average_cost: '',
+    last_purchase_price: '',
+    supplier_name: ''
   })
 
   const [movement, setMovement] = useState({
     item_id: '',
     type: 'in',
     quantity: '',
+    unit_cost: '',
     description: ''
   })
 
@@ -128,7 +139,11 @@ const Inventory = () => {
       name: '',
       stock: '',
       min_stock: '',
-      unit: 'unid.'
+      unit: 'unid.',
+      unit_cost: '',
+      average_cost: '',
+      last_purchase_price: '',
+      supplier_name: ''
     })
   }
 
@@ -138,7 +153,11 @@ const Inventory = () => {
       name: item.name || '',
       stock: item.stock || item.current_stock || 0,
       min_stock: item.min_stock || item.minimum_stock || 0,
-      unit: item.unit || 'unid.'
+      unit: item.unit || 'unid.',
+      unit_cost: item.unit_cost || 0,
+      average_cost: item.average_cost || 0,
+      last_purchase_price: item.last_purchase_price || 0,
+      supplier_name: item.supplier_name || ''
     })
 
     setActiveTab('inventario')
@@ -152,9 +171,7 @@ const Inventory = () => {
     setMessage('')
 
     try {
-      if (!form.name.trim()) {
-        throw new Error('El nombre del insumo es obligatorio')
-      }
+      if (!form.name.trim()) throw new Error('El nombre del insumo es obligatorio')
 
       const payload = {
         name: form.name.trim(),
@@ -162,7 +179,11 @@ const Inventory = () => {
         current_stock: Number(form.stock || 0),
         min_stock: Number(form.min_stock || 0),
         minimum_stock: Number(form.min_stock || 0),
-        unit: form.unit
+        unit: form.unit,
+        unit_cost: Number(form.unit_cost || 0),
+        average_cost: Number(form.average_cost || form.unit_cost || 0),
+        last_purchase_price: Number(form.last_purchase_price || form.unit_cost || 0),
+        supplier_name: form.supplier_name || ''
       }
 
       if (editingId) {
@@ -170,14 +191,12 @@ const Inventory = () => {
           method: 'PUT',
           body: JSON.stringify(payload)
         })
-
         setMessage('Insumo actualizado correctamente')
       } else {
         await request('/inventory', {
           method: 'POST',
           body: JSON.stringify(payload)
         })
-
         setMessage('Insumo creado correctamente')
       }
 
@@ -199,10 +218,7 @@ const Inventory = () => {
     setMessage('')
 
     try {
-      await request(`/inventory/${item.id}`, {
-        method: 'DELETE'
-      })
-
+      await request(`/inventory/${item.id}`, { method: 'DELETE' })
       setMessage('Insumo eliminado correctamente')
       await loadInventory()
     } catch (err) {
@@ -219,10 +235,7 @@ const Inventory = () => {
     setMessage('')
 
     try {
-      if (!movement.item_id) {
-        throw new Error('Selecciona un insumo')
-      }
-
+      if (!movement.item_id) throw new Error('Selecciona un insumo')
       if (!movement.quantity || Number(movement.quantity) <= 0) {
         throw new Error('La cantidad debe ser mayor a 0')
       }
@@ -233,6 +246,7 @@ const Inventory = () => {
           item_id: movement.item_id,
           type: movement.type,
           quantity: Number(movement.quantity),
+          unit_cost: movement.unit_cost === '' ? undefined : Number(movement.unit_cost || 0),
           description: movement.description.trim()
         })
       })
@@ -241,6 +255,7 @@ const Inventory = () => {
         item_id: '',
         type: 'in',
         quantity: '',
+        unit_cost: '',
         description: ''
       })
 
@@ -254,10 +269,15 @@ const Inventory = () => {
   }
 
   const totalStock = items.reduce(
-    (sum, item) =>
-      sum + Number(item.stock || item.current_stock || item.quantity || 0),
+    (sum, item) => sum + Number(item.stock || item.current_stock || item.quantity || 0),
     0
   )
+
+  const totalInventoryValue = items.reduce((sum, item) => {
+    const stock = Number(item.stock || item.current_stock || item.quantity || 0)
+    const cost = Number(item.average_cost || item.unit_cost || 0)
+    return sum + stock * cost
+  }, 0)
 
   const criticalItems = items.filter((item) => {
     const stock = Number(item.stock || item.current_stock || item.quantity || 0)
@@ -286,20 +306,23 @@ const Inventory = () => {
 
           if (!inventoryId) return
 
+          const foundItem = items.find((item) => item.id === inventoryId)
+
           const ingredientName =
             inventory.name ||
-            items.find((item) => item.id === inventoryId)?.name ||
+            foundItem?.name ||
             'Ingrediente sin nombre'
 
           const unit =
             inventory.unit ||
             recipeItem.unit ||
-            items.find((item) => item.id === inventoryId)?.unit ||
+            foundItem?.unit ||
             'unid.'
 
           const quantitySold =
-            Number(recipeItem.quantity || 0) *
-            Number(orderItem.quantity || 1)
+            Number(recipeItem.quantity || 0) * Number(orderItem.quantity || 1)
+
+          const unitCost = Number(foundItem?.average_cost || foundItem?.unit_cost || 0)
 
           if (quantitySold <= 0) return
 
@@ -308,11 +331,13 @@ const Inventory = () => {
               id: inventoryId,
               name: ingredientName,
               unit,
-              sold: 0
+              sold: 0,
+              value: 0
             }
           }
 
           summary[inventoryId].sold += quantitySold
+          summary[inventoryId].value += quantitySold * unitCost
         })
       })
     })
@@ -322,6 +347,11 @@ const Inventory = () => {
 
   const totalSoldIngredients = soldStockSummary.reduce(
     (sum, item) => sum + Number(item.sold || 0),
+    0
+  )
+
+  const totalSoldValue = soldStockSummary.reduce(
+    (sum, item) => sum + Number(item.value || 0),
     0
   )
 
@@ -351,7 +381,7 @@ const Inventory = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="card">
               <p className="text-gray-500">Stock total</p>
               <h2 className="text-3xl font-bold">{totalStock}</h2>
@@ -359,9 +389,7 @@ const Inventory = () => {
 
             <div className="card">
               <p className="text-gray-500">Stock crítico</p>
-              <h2 className="text-3xl font-bold text-red-600">
-                {criticalItems.length}
-              </h2>
+              <h2 className="text-3xl font-bold text-red-600">{criticalItems.length}</h2>
             </div>
 
             <div className="card">
@@ -370,12 +398,13 @@ const Inventory = () => {
             </div>
 
             <div className="card">
+              <p className="text-gray-500">Valor inventario</p>
+              <h2 className="text-3xl font-bold">{money(totalInventoryValue)}</h2>
+            </div>
+
+            <div className="card">
               <p className="text-gray-500">Estado</p>
-              <h2
-                className={`text-3xl font-bold ${
-                  inventoryStatus === 'OK' ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
+              <h2 className={`text-3xl font-bold ${inventoryStatus === 'OK' ? 'text-green-600' : 'text-red-600'}`}>
                 {inventoryStatus}
               </h2>
             </div>
@@ -412,12 +441,7 @@ const Inventory = () => {
                   <input
                     className="input"
                     value={form.name}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        name: event.target.value
-                      }))
-                    }
+                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                     placeholder="Ej: Carne hamburguesa"
                   />
 
@@ -425,12 +449,7 @@ const Inventory = () => {
                     type="number"
                     className="input"
                     value={form.stock}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        stock: event.target.value
-                      }))
-                    }
+                    onChange={(event) => setForm((current) => ({ ...current, stock: event.target.value }))}
                     placeholder="Stock actual"
                   />
 
@@ -438,24 +457,14 @@ const Inventory = () => {
                     type="number"
                     className="input"
                     value={form.min_stock}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        min_stock: event.target.value
-                      }))
-                    }
+                    onChange={(event) => setForm((current) => ({ ...current, min_stock: event.target.value }))}
                     placeholder="Stock mínimo"
                   />
 
                   <select
                     className="input"
                     value={form.unit}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        unit: event.target.value
-                      }))
-                    }
+                    onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
                   >
                     <option value="unid.">unid.</option>
                     <option value="kg">kg</option>
@@ -467,16 +476,46 @@ const Inventory = () => {
                     <option value="bolsas">bolsas</option>
                   </select>
 
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={form.unit_cost}
+                    onChange={(event) => setForm((current) => ({ ...current, unit_cost: event.target.value }))}
+                    placeholder="Costo unitario para Food Cost"
+                  />
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={form.average_cost}
+                    onChange={(event) => setForm((current) => ({ ...current, average_cost: event.target.value }))}
+                    placeholder="Costo promedio"
+                  />
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={form.last_purchase_price}
+                    onChange={(event) => setForm((current) => ({ ...current, last_purchase_price: event.target.value }))}
+                    placeholder="Última compra"
+                  />
+
+                  <input
+                    className="input"
+                    value={form.supplier_name}
+                    onChange={(event) => setForm((current) => ({ ...current, supplier_name: event.target.value }))}
+                    placeholder="Proveedor principal"
+                  />
+
                   <button
                     type="submit"
                     disabled={saving}
                     className="w-full bg-black text-yellow-400 font-bold py-3 rounded-lg disabled:opacity-50"
                   >
-                    {saving
-                      ? 'Guardando...'
-                      : editingId
-                        ? 'Guardar cambios'
-                        : 'Crear insumo'}
+                    {saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear insumo'}
                   </button>
 
                   {editingId && (
@@ -493,9 +532,7 @@ const Inventory = () => {
 
               <div className="card xl:col-span-2">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-poppins font-bold">
-                    Inventario actual
-                  </h2>
+                  <h2 className="text-2xl font-poppins font-bold">Inventario actual</h2>
 
                   <button
                     type="button"
@@ -507,22 +544,20 @@ const Inventory = () => {
                 </div>
 
                 {loading ? (
-                  <div className="text-center text-gray-500 py-10">
-                    Cargando inventario...
-                  </div>
+                  <div className="text-center text-gray-500 py-10">Cargando inventario...</div>
                 ) : items.length === 0 ? (
-                  <div className="text-center text-gray-500 py-10">
-                    No hay insumos registrados.
-                  </div>
+                  <div className="text-center text-gray-500 py-10">No hay insumos registrados.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
                         <tr className="border-b text-gray-500">
                           <th className="py-3">Insumo / Producto</th>
-                          <th>Stock actual</th>
-                          <th>Stock mínimo</th>
+                          <th>Stock</th>
                           <th>Unidad</th>
+                          <th>Costo unit.</th>
+                          <th>Costo prom.</th>
+                          <th>Valor stock</th>
                           <th>Estado</th>
                           <th className="text-right">Acciones</th>
                         </tr>
@@ -530,25 +565,27 @@ const Inventory = () => {
 
                       <tbody>
                         {items.map((item) => {
-                          const stock = Number(
-                            item.stock || item.current_stock || item.quantity || 0
-                          )
-                          const minStock = Number(
-                            item.min_stock || item.minimum_stock || 0
-                          )
+                          const stock = Number(item.stock || item.current_stock || item.quantity || 0)
+                          const minStock = Number(item.min_stock || item.minimum_stock || 0)
+                          const unitCost = Number(item.unit_cost || 0)
+                          const averageCost = Number(item.average_cost || unitCost || 0)
+                          const stockValue = stock * averageCost
                           const isCritical = stock <= minStock
 
                           return (
                             <tr key={item.id} className="border-b">
-                              <td className="py-3 font-semibold">{item.name}</td>
+                              <td className="py-3">
+                                <p className="font-semibold">{item.name}</p>
+                                {item.supplier_name && (
+                                  <p className="text-xs text-gray-500">{item.supplier_name}</p>
+                                )}
+                              </td>
                               <td>{stock}</td>
-                              <td>{minStock}</td>
                               <td>{item.unit || 'unid.'}</td>
-                              <td
-                                className={`font-bold ${
-                                  isCritical ? 'text-red-600' : 'text-green-600'
-                                }`}
-                              >
+                              <td className="font-bold">{money(unitCost)}</td>
+                              <td className="font-bold">{money(averageCost)}</td>
+                              <td className="font-black">{money(stockValue)}</td>
+                              <td className={`font-bold ${isCritical ? 'text-red-600' : 'text-green-600'}`}>
                                 {isCritical ? 'Crítico' : 'OK'}
                               </td>
                               <td className="text-right">
@@ -591,10 +628,7 @@ const Inventory = () => {
                     className="input"
                     value={movement.item_id}
                     onChange={(event) =>
-                      setMovement((current) => ({
-                        ...current,
-                        item_id: event.target.value
-                      }))
+                      setMovement((current) => ({ ...current, item_id: event.target.value }))
                     }
                   >
                     <option value="">Selecciona insumo</option>
@@ -609,10 +643,7 @@ const Inventory = () => {
                     className="input"
                     value={movement.type}
                     onChange={(event) =>
-                      setMovement((current) => ({
-                        ...current,
-                        type: event.target.value
-                      }))
+                      setMovement((current) => ({ ...current, type: event.target.value }))
                     }
                   >
                     <option value="in">Entrada / compra</option>
@@ -626,22 +657,27 @@ const Inventory = () => {
                     className="input"
                     value={movement.quantity}
                     onChange={(event) =>
-                      setMovement((current) => ({
-                        ...current,
-                        quantity: event.target.value
-                      }))
+                      setMovement((current) => ({ ...current, quantity: event.target.value }))
                     }
                     placeholder="Cantidad"
+                  />
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={movement.unit_cost}
+                    onChange={(event) =>
+                      setMovement((current) => ({ ...current, unit_cost: event.target.value }))
+                    }
+                    placeholder="Costo unitario de compra"
                   />
 
                   <textarea
                     className="input min-h-[90px]"
                     value={movement.description}
                     onChange={(event) =>
-                      setMovement((current) => ({
-                        ...current,
-                        description: event.target.value
-                      }))
+                      setMovement((current) => ({ ...current, description: event.target.value }))
                     }
                     placeholder="Ej: Compra semanal / merma / ajuste"
                   />
@@ -660,13 +696,9 @@ const Inventory = () => {
                 <h2 className="text-2xl font-bold mb-4">Historial de movimientos</h2>
 
                 {loading ? (
-                  <div className="text-center py-10 text-gray-500">
-                    Cargando movimientos...
-                  </div>
+                  <div className="text-center py-10 text-gray-500">Cargando movimientos...</div>
                 ) : movements.length === 0 ? (
-                  <div className="text-center py-10 text-gray-500">
-                    No hay movimientos registrados.
-                  </div>
+                  <div className="text-center py-10 text-gray-500">No hay movimientos registrados.</div>
                 ) : (
                   <div className="overflow-x-auto max-h-[520px]">
                     <table className="w-full text-left">
@@ -676,6 +708,7 @@ const Inventory = () => {
                           <th>Insumo</th>
                           <th>Tipo</th>
                           <th>Cantidad</th>
+                          <th>Costo compra</th>
                           <th>Descripción</th>
                         </tr>
                       </thead>
@@ -684,15 +717,12 @@ const Inventory = () => {
                         {movements.map((item) => (
                           <tr key={item.id} className="border-b">
                             <td className="py-3">
-                              {item.created_at
-                                ? new Date(item.created_at).toLocaleString('es-CL')
-                                : ''}
+                              {item.created_at ? new Date(item.created_at).toLocaleString('es-CL') : ''}
                             </td>
                             <td>{item.inventory?.name || 'Sin insumo'}</td>
                             <td>{item.type}</td>
-                            <td>
-                              {item.quantity} {item.inventory?.unit || ''}
-                            </td>
+                            <td>{item.quantity} {item.inventory?.unit || ''}</td>
+                            <td>{money(item.unit_cost || 0)}</td>
                             <td>{item.description || ''}</td>
                           </tr>
                         ))}
@@ -709,33 +739,25 @@ const Inventory = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="card">
                   <p className="text-gray-500">Ingredientes vendidos</p>
-                  <h2 className="text-3xl font-bold">
-                    {soldStockSummary.length}
-                  </h2>
+                  <h2 className="text-3xl font-bold">{soldStockSummary.length}</h2>
                 </div>
 
                 <div className="card">
                   <p className="text-gray-500">Total descontado por recetas</p>
-                  <h2 className="text-3xl font-bold text-red-600">
-                    {totalSoldIngredients}
-                  </h2>
+                  <h2 className="text-3xl font-bold text-red-600">{totalSoldIngredients}</h2>
                 </div>
 
                 <div className="card">
-                  <p className="text-gray-500">Origen</p>
-                  <h2 className="text-xl font-bold">Ventas + Recetas</h2>
+                  <p className="text-gray-500">Costo usado por ventas</p>
+                  <h2 className="text-3xl font-bold">{money(totalSoldValue)}</h2>
                 </div>
               </div>
 
               <div className="card">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h2 className="text-2xl font-bold">
-                      Movimiento de Stock por ventas
-                    </h2>
-                    <p className="text-gray-600">
-                      Cálculo directo desde ventas y recetas de productos.
-                    </p>
+                    <h2 className="text-2xl font-bold">Movimiento de Stock por ventas</h2>
+                    <p className="text-gray-600">Cálculo directo desde ventas y recetas de productos.</p>
                   </div>
 
                   <button
@@ -758,7 +780,8 @@ const Inventory = () => {
                         <tr className="border-b text-gray-500">
                           <th className="py-3">Ingrediente</th>
                           <th>Unidad</th>
-                          <th>Total usado por ventas</th>
+                          <th>Total usado</th>
+                          <th>Costo usado</th>
                         </tr>
                       </thead>
 
@@ -770,6 +793,7 @@ const Inventory = () => {
                             <td className="text-red-600 font-bold">
                               {item.sold} {item.unit}
                             </td>
+                            <td className="font-black">{money(item.value)}</td>
                           </tr>
                         ))}
                       </tbody>
