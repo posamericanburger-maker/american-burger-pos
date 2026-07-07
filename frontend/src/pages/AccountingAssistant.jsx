@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 
@@ -13,14 +13,28 @@ const money = (value) =>
     maximumFractionDigits: 0
   }).format(Number(value || 0))
 
+const ivaFromGross = (gross) => Math.round(Number(gross || 0) * 19 / 119)
+
+const cleanSupplierName = (supplier) =>
+  supplier?.name ||
+  supplier?.supplier_name ||
+  supplier?.business_name ||
+  supplier?.company_name ||
+  supplier?.razon_social ||
+  'Proveedor'
+
 const AccountingAssistant = () => {
   const [dashboard, setDashboard] = useState(null)
   const [expenses, setExpenses] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const [form, setForm] = useState({
+  const emptyForm = {
+    supplier_id: '',
     supplier_name: '',
     document_type: 'FACTURA',
     document_number: '',
@@ -30,7 +44,9 @@ const AccountingAssistant = () => {
     expense_date: new Date().toISOString().slice(0, 10),
     total_amount: '',
     notes: ''
-  })
+  }
+
+  const [form, setForm] = useState(emptyForm)
 
   const getToken = () =>
     localStorage.getItem('token') ||
@@ -69,13 +85,20 @@ const AccountingAssistant = () => {
       setLoading(true)
       setError('')
 
-      const [dashboardData, expensesData] = await Promise.all([
+      const [dashboardData, expensesData, suppliersData] = await Promise.all([
         request('/accounting/dashboard'),
-        request('/accounting/expenses')
+        request('/accounting/expenses'),
+        request('/suppliers')
       ])
 
       setDashboard(dashboardData)
       setExpenses(Array.isArray(expensesData) ? expensesData : [])
+
+      setSuppliers(
+        Array.isArray(suppliersData)
+          ? suppliersData
+          : suppliersData.suppliers || suppliersData.data || []
+      )
     } catch (err) {
       setError(err.message || 'No se pudo cargar el asistente contable')
     } finally {
@@ -87,11 +110,40 @@ const AccountingAssistant = () => {
     loadData()
   }, [])
 
+  const preview = useMemo(() => {
+    const total = Number(form.total_amount || 0)
+    const isInvoice = form.document_type === 'FACTURA'
+    const iva = isInvoice ? ivaFromGross(total) : 0
+    const net = total - iva
+
+    return {
+      total,
+      iva,
+      net
+    }
+  }, [form.total_amount, form.document_type])
+
   const handleChange = (event) => {
     setForm({
       ...form,
       [event.target.name]: event.target.value
     })
+  }
+
+  const handleSupplierChange = (event) => {
+    const supplierId = event.target.value
+    const selected = suppliers.find((item) => String(item.id) === String(supplierId))
+
+    setForm({
+      ...form,
+      supplier_id: selected?.id || '',
+      supplier_name: selected ? cleanSupplierName(selected) : ''
+    })
+  }
+
+  const resetForm = () => {
+    setEditingId(null)
+    setForm(emptyForm)
   }
 
   const handleSubmit = async (event) => {
@@ -103,31 +155,56 @@ const AccountingAssistant = () => {
     }
 
     try {
+      setSaving(true)
       setError('')
       setMessage('')
 
-      await request('/accounting/expenses', {
-        method: 'POST',
-        body: JSON.stringify(form)
-      })
+      const payload = {
+        ...form,
+        total_amount: Number(form.total_amount || 0)
+      }
 
-      setForm({
-        supplier_name: '',
-        document_type: 'FACTURA',
-        document_number: '',
-        description: '',
-        category: '',
-        payment_method: 'transfer',
-        expense_date: new Date().toISOString().slice(0, 10),
-        total_amount: '',
-        notes: ''
-      })
+      if (editingId) {
+        await request(`/accounting/expenses/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        })
 
-      setMessage('Compra o gasto registrado correctamente')
+        setMessage('Gasto actualizado correctamente')
+      } else {
+        await request('/accounting/expenses', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
+
+        setMessage('Compra o gasto registrado correctamente')
+      }
+
+      resetForm()
       await loadData()
     } catch (err) {
       setError(err.message || 'No se pudo guardar el gasto')
+    } finally {
+      setSaving(false)
     }
+  }
+
+  const editExpense = (item) => {
+    setEditingId(item.id)
+    setForm({
+      supplier_id: item.supplier_id || '',
+      supplier_name: item.supplier_name || '',
+      document_type: item.document_type || 'BOLETA',
+      document_number: item.document_number || '',
+      description: item.description || '',
+      category: item.category || '',
+      payment_method: item.payment_method || 'cash',
+      expense_date: item.expense_date || new Date().toISOString().slice(0, 10),
+      total_amount: String(item.total_amount || ''),
+      notes: item.notes || ''
+    })
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const deleteExpense = async (id) => {
@@ -176,7 +253,7 @@ const AccountingAssistant = () => {
               🧾 Asistente Contable
             </h1>
             <p className="text-gray-300 mt-1">
-              Centro financiero y tributario de American Burger.
+              Centro financiero y tributario conectado con Caja y Proveedores.
             </p>
           </div>
 
@@ -195,6 +272,24 @@ const AccountingAssistant = () => {
                     <Card title="IVA crédito" value={money(dashboard.taxes?.iva_credit)} />
                     <Card title="IVA a pagar" value={money(dashboard.taxes?.iva_to_pay)} danger />
                     <Card title="Utilidad estimada" value={money(dashboard.result?.gross_profit_estimated)} />
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+                    <InfoBox
+                      title="Gastos del mes"
+                      value={money(dashboard.expenses?.gross)}
+                      subtitle={`${dashboard.expenses?.count || 0} registros`}
+                    />
+                    <InfoBox
+                      title="Gastos netos"
+                      value={money(dashboard.expenses?.net)}
+                      subtitle="Sin IVA crédito"
+                    />
+                    <InfoBox
+                      title="Margen estimado"
+                      value={`${dashboard.result?.margin_percent || 0}%`}
+                      subtitle="Estimado sobre ventas brutas"
+                    />
                   </div>
 
                   <div className="bg-white rounded-2xl shadow-md p-6">
@@ -220,21 +315,43 @@ const AccountingAssistant = () => {
               )}
 
               <div className="bg-white rounded-2xl shadow-md p-6">
-                <h2 className="text-2xl font-black mb-4">
-                  🧾 Registrar compra o gasto
-                </h2>
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-2xl font-black">
+                      🧾 {editingId ? 'Editar compra o gasto' : 'Registrar compra o gasto'}
+                    </h2>
+                    <p className="text-gray-500">
+                      Este registro se guarda en Caja y alimenta Contabilidad automáticamente.
+                    </p>
+                  </div>
+
+                  {editingId && (
+                    <button
+                      onClick={resetForm}
+                      className="bg-gray-100 hover:bg-gray-200 px-5 py-3 rounded-xl font-bold"
+                    >
+                      Cancelar edición
+                    </button>
+                  )}
+                </div>
 
                 <form
                   onSubmit={handleSubmit}
                   className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
                 >
-                  <input
+                  <select
                     className="input"
-                    name="supplier_name"
-                    placeholder="Proveedor"
-                    value={form.supplier_name}
-                    onChange={handleChange}
-                  />
+                    name="supplier_id"
+                    value={form.supplier_id}
+                    onChange={handleSupplierChange}
+                  >
+                    <option value="">Sin proveedor</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {cleanSupplierName(supplier)}
+                      </option>
+                    ))}
+                  </select>
 
                   <select
                     className="input"
@@ -301,6 +418,23 @@ const AccountingAssistant = () => {
                     onChange={handleChange}
                   />
 
+                  <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 rounded-xl border p-4">
+                      <p className="text-gray-500 font-bold">Neto estimado</p>
+                      <h3 className="text-2xl font-black">{money(preview.net)}</h3>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl border p-4">
+                      <p className="text-gray-500 font-bold">IVA crédito</p>
+                      <h3 className="text-2xl font-black">{money(preview.iva)}</h3>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl border p-4">
+                      <p className="text-gray-500 font-bold">Total</p>
+                      <h3 className="text-2xl font-black">{money(preview.total)}</h3>
+                    </div>
+                  </div>
+
                   <input
                     className="input xl:col-span-3"
                     name="notes"
@@ -311,21 +445,26 @@ const AccountingAssistant = () => {
 
                   <button
                     type="submit"
-                    className="bg-black text-yellow-400 font-black py-3 rounded-xl"
+                    disabled={saving}
+                    className="bg-black text-yellow-400 font-black py-3 rounded-xl disabled:opacity-50"
                   >
-                    Guardar
+                    {saving
+                      ? 'Guardando...'
+                      : editingId
+                        ? 'Actualizar'
+                        : 'Guardar'}
                   </button>
                 </form>
               </div>
 
               <div className="bg-white rounded-2xl shadow-md p-6">
-                <div className="flex justify-between items-center mb-5">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
                   <div>
                     <h2 className="text-2xl font-black">
                       📑 Compras y gastos registrados
                     </h2>
                     <p className="text-gray-500">
-                      Facturas, boletas, gastos y respaldos del mes.
+                      Gastos provenientes de Caja y Contabilidad.
                     </p>
                   </div>
 
@@ -345,6 +484,7 @@ const AccountingAssistant = () => {
                         <th className="px-4">Proveedor</th>
                         <th className="px-4">Documento</th>
                         <th className="px-4">Descripción</th>
+                        <th className="px-4">Categoría</th>
                         <th className="px-4">Neto</th>
                         <th className="px-4">IVA</th>
                         <th className="px-4">Total</th>
@@ -355,7 +495,7 @@ const AccountingAssistant = () => {
                     <tbody>
                       {expenses.length === 0 ? (
                         <tr>
-                          <td colSpan="8" className="text-center text-gray-500 py-10">
+                          <td colSpan="9" className="text-center text-gray-500 py-10">
                             Aún no hay compras o gastos registrados.
                           </td>
                         </tr>
@@ -370,18 +510,28 @@ const AccountingAssistant = () => {
                               {item.document_type} {item.document_number}
                             </td>
                             <td className="px-4">{item.description || '-'}</td>
+                            <td className="px-4">{item.category || '-'}</td>
                             <td className="px-4">{money(item.net_amount)}</td>
                             <td className="px-4">{money(item.iva_amount)}</td>
                             <td className="px-4 font-black">
                               {money(item.total_amount)}
                             </td>
                             <td className="px-4 text-right">
-                              <button
-                                onClick={() => deleteExpense(item.id)}
-                                className="bg-red-600 text-white px-3 py-2 rounded-lg font-bold"
-                              >
-                                Eliminar
-                              </button>
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => editExpense(item)}
+                                  className="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold"
+                                >
+                                  Editar
+                                </button>
+
+                                <button
+                                  onClick={() => deleteExpense(item.id)}
+                                  className="bg-red-600 text-white px-3 py-2 rounded-lg font-bold"
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -411,6 +561,16 @@ function Card({ title, value, danger }) {
         {title}
       </p>
       <h2 className="text-3xl font-black mt-2">{value}</h2>
+    </div>
+  )
+}
+
+function InfoBox({ title, value, subtitle }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-md p-5">
+      <p className="text-gray-500 font-bold">{title}</p>
+      <h2 className="text-3xl font-black mt-2">{value}</h2>
+      <p className="text-gray-500 mt-1">{subtitle}</p>
     </div>
   )
 }
