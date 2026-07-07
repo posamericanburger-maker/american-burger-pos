@@ -132,6 +132,7 @@ const AccountingAssistant = () => {
 
     const projectedSales = salesGross * 1.8
     const projectedIVA = ivaToPay * 1.8
+
     const businessHealth = Math.max(
       0,
       Math.min(
@@ -148,6 +149,7 @@ const AccountingAssistant = () => {
     return {
       salesGross,
       salesNet,
+      salesByPayment: dashboard?.sales?.by_payment_method || {},
       expensesGross,
       expensesNet,
       ivaDebit,
@@ -370,7 +372,7 @@ const AccountingAssistant = () => {
               )}
 
               {activeTab === 'ai' && (
-                <AIAccounting totals={totals} dashboard={dashboard} expenses={expenses} />
+                <AIAccounting totals={totals} expenses={expenses} />
               )}
 
               {activeTab === 'projections' && (
@@ -671,15 +673,87 @@ function ProfitLoss({ totals, expenses }) {
 }
 
 function CashFlow({ totals, expenses }) {
+  const sales = totals.salesByPayment || {}
+
+  const cashSales = Number(sales.cash || 0)
+  const transferSales = Number(sales.transfer || 0)
+
+  const cardSales =
+    Number(sales.card || 0) +
+    Number(sales.credit || 0) +
+    Number(sales.debit || 0)
+
+  const pendingSales = Number(sales.pending || 0)
+
+  const expensesByMethod = {}
+
+  expenses.forEach((expense) => {
+    const method = expense.payment_method || 'cash'
+
+    expensesByMethod[method] =
+      (expensesByMethod[method] || 0) +
+      Number(expense.total_amount || 0)
+  })
+
+  const cashExpenses = Number(expensesByMethod.cash || 0)
+  const transferExpenses = Number(expensesByMethod.transfer || 0)
+
+  const cardExpenses =
+    Number(expensesByMethod.card || 0) +
+    Number(expensesByMethod.credit || 0) +
+    Number(expensesByMethod.debit || 0)
+
+  const otherExpenses = Number(expensesByMethod.other || 0)
+
+  const netCash = cashSales - cashExpenses
+  const netTransfer = transferSales - transferExpenses
+  const netCard = cardSales - cardExpenses
+  const netTotal = totals.salesGross - totals.expensesGross
+
   return (
-    <Panel title="💰 Flujo de Caja" subtitle="Entradas y salidas reales de dinero.">
+    <Panel
+      title="💰 Flujo de Caja"
+      subtitle="Entradas y salidas reales de dinero por medio de pago."
+    >
       <FinancialRow label="Entradas por ventas" value={totals.salesGross} strong />
       <FinancialRow label="(-) Salidas por gastos" value={totals.expensesGross} negative />
-      <FinancialRow label="Flujo neto estimado" value={totals.salesGross - totals.expensesGross} strong highlight />
+      <FinancialRow label="Flujo neto" value={netTotal} strong highlight />
+
       <Divider />
-      <MiniBox title="Efectivo / Caja" value="Próximo paso" />
-      <MiniBox title="Transferencias" value="Próximo paso" />
-      <MiniBox title="Tarjetas" value="Próximo paso" />
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MiniBox title="💵 Efectivo recibido" value={money(cashSales)} />
+        <MiniBox title="🏦 Transferencias recibidas" value={money(transferSales)} />
+        <MiniBox title="💳 Tarjetas recibidas" value={money(cardSales)} />
+        <MiniBox title="⏳ Pendiente" value={money(pendingSales)} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+        <MiniBox title="Gastos efectivo" value={money(cashExpenses)} />
+        <MiniBox title="Gastos transferencia" value={money(transferExpenses)} />
+        <MiniBox title="Gastos tarjeta" value={money(cardExpenses)} />
+        <MiniBox title="Otros gastos" value={money(otherExpenses)} />
+      </div>
+
+      <Divider />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MiniBox title="Flujo efectivo" value={money(netCash)} />
+        <MiniBox title="Flujo transferencia" value={money(netTransfer)} />
+        <MiniBox title="Flujo tarjeta" value={money(netCard)} />
+      </div>
+
+      <div className={`rounded-2xl p-6 mt-4 ${netTotal >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+        <p className="font-bold text-gray-600">Resultado de flujo de caja</p>
+        <h2 className={`text-4xl font-black mt-2 ${netTotal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+          {money(netTotal)}
+        </h2>
+        <p className="mt-2 font-semibold">
+          {netTotal >= 0
+            ? 'El negocio generó caja positiva en el periodo.'
+            : 'Salió más dinero del que entró en el periodo.'}
+        </p>
+      </div>
     </Panel>
   )
 }
