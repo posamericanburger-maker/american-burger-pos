@@ -23,6 +23,7 @@ import Users from './pages/Users/Users'
 import BusinessSettings from './pages/Settings/BusinessSettings'
 import Diagnostics from './pages/Diagnostics/Diagnostics'
 import Finance from './pages/Finance/Finance'
+import AccountingAssistant from './pages/AccountingAssistant'
 
 // Public Store
 import PublicStore from './publicStore/PublicStore'
@@ -40,20 +41,27 @@ function App() {
 
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+
           <Route path="/pos/mostrador" element={<ProtectedRoute roles={['cajero', 'admin']}><POSMostrador /></ProtectedRoute>} />
           <Route path="/pos/delivery" element={<ProtectedRoute roles={['cajero', 'admin']}><POSDelivery /></ProtectedRoute>} />
+
           <Route path="/caja" element={<ProtectedRoute roles={['cajero', 'admin']}><CashRegister /></ProtectedRoute>} />
           <Route path="/cocina" element={<ProtectedRoute roles={['cocina', 'admin']}><Kitchen /></ProtectedRoute>} />
+
           <Route path="/productos" element={<ProtectedRoute roles={['admin']}><Products /></ProtectedRoute>} />
           <Route path="/categorias" element={<ProtectedRoute roles={['admin']}><Categories /></ProtectedRoute>} />
           <Route path="/combos" element={<ProtectedRoute roles={['admin']}><Combos /></ProtectedRoute>} />
+
           <Route path="/inventario" element={<ProtectedRoute roles={['admin']}><Inventory /></ProtectedRoute>} />
           <Route path="/clientes" element={<ProtectedRoute roles={['cajero', 'admin']}><Customers /></ProtectedRoute>} />
           <Route path="/pedidos" element={<ProtectedRoute roles={['cajero', 'admin']}><Orders /></ProtectedRoute>} />
           <Route path="/pedidos-externos" element={<ProtectedRoute roles={['cajero', 'admin']}><ExternalOrders /></ProtectedRoute>} />
           <Route path="/canales" element={<ProtectedRoute roles={['admin']}><Channels /></ProtectedRoute>} />
+
           <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reports /></ProtectedRoute>} />
           <Route path="/finanzas" element={<ProtectedRoute roles={['admin']}><Finance /></ProtectedRoute>} />
+          <Route path="/contabilidad" element={<ProtectedRoute roles={['admin']}><AccountingAssistant /></ProtectedRoute>} />
+
           <Route path="/usuarios" element={<ProtectedRoute roles={['admin']}><Users /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute roles={['admin']}><BusinessSettings /></ProtectedRoute>} />
           <Route path="/diagnostico" element={<ProtectedRoute roles={['admin']}><Diagnostics /></ProtectedRoute>} />
