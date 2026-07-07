@@ -32,24 +32,17 @@ const isExpenseMovement = (movement) => {
 }
 
 const normalizeExpense = (movement) => {
-  const gross = num(
-    movement.total_amount ||
-    movement.amount ||
-    movement.monto ||
-    0
-  )
+  const gross = num(movement.total_amount || movement.amount || 0)
 
   const documentType = String(
-    movement.document_type ||
-    movement.documentType ||
-    'BOLETA'
+    movement.document_type || 'BOLETA'
   ).toUpperCase()
 
-  const hasInvoice = documentType === 'FACTURA'
+  const isInvoice = documentType === 'FACTURA'
 
   const iva = movement.iva_amount !== null && movement.iva_amount !== undefined
     ? num(movement.iva_amount)
-    : hasInvoice
+    : isInvoice
       ? ivaFromGross(gross)
       : 0
 
@@ -64,9 +57,9 @@ const normalizeExpense = (movement) => {
     user_id: movement.user_id,
     type: movement.type,
     supplier_id: movement.supplier_id || null,
-    supplier_name: movement.supplier_name || movement.provider_name || '',
+    supplier_name: movement.supplier_name || '',
     document_type: documentType,
-    document_number: movement.document_number || movement.invoice_number || '',
+    document_number: movement.document_number || '',
     description: movement.description || movement.reason || '',
     category: movement.category || 'Caja',
     payment_method: movement.payment_method || 'cash',
@@ -75,8 +68,21 @@ const normalizeExpense = (movement) => {
     net_amount: net,
     iva_amount: iva,
     total_amount: gross,
-    notes: movement.notes || movement.reason || ''
+    notes: movement.notes || ''
   }
+}
+
+const getOpenCashSession = async () => {
+  const { data, error } = await supabase
+    .from('cash_sessions')
+    .select('*')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
 }
 
 const loadMonthlyData = async (query = {}) => {
@@ -135,15 +141,14 @@ router.get('/dashboard', async (req, res) => {
     const estimatedProfit = netSales - netExpenses
 
     const salesByPayment = {}
+    const expensesByCategory = {}
+    const expensesBySupplier = {}
 
     orders.forEach((order) => {
       const method = order.payment_method || order.paymentMethod || 'Sin método'
       const amount = num(order.total || order.total_amount || order.amount)
       salesByPayment[method] = (salesByPayment[method] || 0) + amount
     })
-
-    const expensesByCategory = {}
-    const expensesBySupplier = {}
 
     expenses.forEach((expense) => {
       const category = expense.category || 'Sin categoría'
@@ -171,8 +176,8 @@ router.get('/dashboard', async (req, res) => {
       alerts.push({
         type: 'GASTOS',
         level: 'info',
-        title: 'Sin gastos registrados en Caja',
-        message: 'Este mes no tienes gastos registrados en el módulo Caja.'
+        title: 'Sin gastos registrados',
+        message: 'Este mes no tienes gastos registrados en Caja o Contabilidad.'
       })
     }
 
@@ -181,7 +186,7 @@ router.get('/dashboard', async (req, res) => {
         type: 'UTILIDAD',
         level: 'danger',
         title: 'Utilidad baja o negativa',
-        message: 'Las ventas del mes no están cubriendo los gastos registrados en Caja.'
+        message: 'Las ventas del mes no están cubriendo los gastos registrados.'
       })
     }
 
@@ -223,7 +228,7 @@ router.get('/dashboard', async (req, res) => {
   } catch (error) {
     console.error('Accounting dashboard error:', error)
     res.status(500).json({
-      message: 'Error generando dashboard contable conectado a Caja',
+      message: 'Error generando dashboard contable',
       error: error.message
     })
   }
@@ -273,28 +278,151 @@ router.get('/expenses/:id', async (req, res) => {
   } catch (error) {
     console.error('Accounting expense detail error:', error)
     res.status(500).json({
-      message: 'Error cargando detalle del gasto desde Caja',
+      message: 'Error cargando detalle del gasto',
       error: error.message
     })
   }
 })
 
 router.post('/expenses', async (req, res) => {
-  res.status(405).json({
-    message: 'Los gastos ahora se registran desde el módulo Caja. Contabilidad solo analiza los gastos de Caja.'
-  })
+  try {
+    const body = req.body || {}
+
+    const totalAmount = num(body.total_amount || body.amount)
+
+    if (totalAmount <= 0) {
+      return res.status(400).json({
+        message: 'El monto debe ser mayor a 0'
+      })
+    }
+
+    const session = await getOpenCashSession()
+
+    if (!session) {
+      return res.status(400).json({
+        message: 'Debes abrir caja antes de registrar gastos'
+      })
+    }
+
+    const documentType = String(body.document_type || 'BOLETA').toUpperCase()
+    const isInvoice = documentType === 'FACTURA'
+
+    const ivaAmount = body.iva_amount !== undefined && body.iva_amount !== ''
+      ? num(body.iva_amount)
+      : isInvoice
+        ? ivaFromGross(totalAmount)
+        : 0
+
+    const netAmount = body.net_amount !== undefined && body.net_amount !== ''
+      ? num(body.net_amount)
+      : totalAmount - ivaAmount
+
+    const payload = {
+      cash_session_id: session.id,
+      user_id: body.user_id || null,
+      type: 'expense',
+      amount: totalAmount,
+      total_amount: totalAmount,
+      net_amount: netAmount,
+      iva_amount: ivaAmount,
+      supplier_id: body.supplier_id || null,
+      supplier_name: body.supplier_name || '',
+      document_type: documentType,
+      document_number: body.document_number || '',
+      category: body.category || '',
+      payment_method: body.payment_method || 'cash',
+      description: body.description || '',
+      notes: body.notes || '',
+      reason: body.description || body.notes || 'Gasto registrado desde Contabilidad'
+    }
+
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .insert(payload)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    res.status(201).json(normalizeExpense(data))
+  } catch (error) {
+    console.error('Accounting expense create error:', error)
+    res.status(500).json({
+      message: 'Error registrando gasto conectado a Caja',
+      error: error.message
+    })
+  }
 })
 
 router.put('/expenses/:id', async (req, res) => {
-  res.status(405).json({
-    message: 'Los gastos se editan desde el módulo Caja.'
-  })
+  try {
+    const body = req.body || {}
+    const totalAmount = num(body.total_amount || body.amount)
+    const documentType = String(body.document_type || 'BOLETA').toUpperCase()
+    const isInvoice = documentType === 'FACTURA'
+
+    const ivaAmount = body.iva_amount !== undefined && body.iva_amount !== ''
+      ? num(body.iva_amount)
+      : isInvoice
+        ? ivaFromGross(totalAmount)
+        : 0
+
+    const netAmount = body.net_amount !== undefined && body.net_amount !== ''
+      ? num(body.net_amount)
+      : totalAmount - ivaAmount
+
+    const payload = {
+      amount: totalAmount,
+      total_amount: totalAmount,
+      net_amount: netAmount,
+      iva_amount: ivaAmount,
+      supplier_id: body.supplier_id || null,
+      supplier_name: body.supplier_name || '',
+      document_type: documentType,
+      document_number: body.document_number || '',
+      category: body.category || '',
+      payment_method: body.payment_method || 'cash',
+      description: body.description || '',
+      notes: body.notes || '',
+      reason: body.description || body.notes || 'Gasto actualizado desde Contabilidad'
+    }
+
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .update(payload)
+      .eq('id', req.params.id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    res.json(normalizeExpense(data))
+  } catch (error) {
+    console.error('Accounting expense update error:', error)
+    res.status(500).json({
+      message: 'Error actualizando gasto',
+      error: error.message
+    })
+  }
 })
 
 router.delete('/expenses/:id', async (req, res) => {
-  res.status(405).json({
-    message: 'Los gastos se eliminan desde el módulo Caja.'
-  })
+  try {
+    const { error } = await supabase
+      .from('cash_movements')
+      .delete()
+      .eq('id', req.params.id)
+
+    if (error) throw error
+
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('Accounting expense delete error:', error)
+    res.status(500).json({
+      message: 'Error eliminando gasto',
+      error: error.message
+    })
+  }
 })
 
 router.get('/iva', async (req, res) => {
@@ -331,7 +459,7 @@ router.get('/iva', async (req, res) => {
   } catch (error) {
     console.error('Accounting IVA error:', error)
     res.status(500).json({
-      message: 'Error calculando IVA desde Caja',
+      message: 'Error calculando IVA',
       error: error.message
     })
   }
@@ -382,7 +510,7 @@ router.get('/profit-loss', async (req, res) => {
   } catch (error) {
     console.error('Accounting profit-loss error:', error)
     res.status(500).json({
-      message: 'Error generando estado de resultados desde Caja',
+      message: 'Error generando estado de resultados',
       error: error.message
     })
   }
@@ -420,8 +548,8 @@ router.get('/alerts', async (req, res) => {
       alerts.push({
         type: 'GASTOS',
         level: 'warning',
-        title: 'No hay gastos en Caja',
-        message: 'Registra gastos desde Caja para que Contabilidad pueda calcular costos e IVA crédito.'
+        title: 'No hay gastos registrados',
+        message: 'Registra gastos desde Caja o Contabilidad para calcular costos e IVA crédito.'
       })
     }
 
@@ -439,7 +567,7 @@ router.get('/alerts', async (req, res) => {
         type: 'UTILIDAD',
         level: 'danger',
         title: 'Gastos mayores a ventas',
-        message: 'Los gastos registrados en Caja superan las ventas del periodo.'
+        message: 'Los gastos registrados superan las ventas del periodo.'
       })
     }
 
@@ -447,7 +575,7 @@ router.get('/alerts', async (req, res) => {
   } catch (error) {
     console.error('Accounting alerts error:', error)
     res.status(500).json({
-      message: 'Error generando alertas desde Caja',
+      message: 'Error generando alertas',
       error: error.message
     })
   }
