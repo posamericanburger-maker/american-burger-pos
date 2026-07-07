@@ -18,6 +18,7 @@ import customersRoutes from './routes/customers.routes.js'
 import suppliersRoutes from './routes/suppliers.routes.js'
 import financeRoutes from './routes/finance.routes.js'
 import publicStoreRoutes from './routes/public-store.routes.js'
+import accountingRoutes from './routes/accounting.routes.js'
 
 import { errorHandler } from './middleware/errorHandler.js'
 import { logger } from './utils/logger.js'
@@ -61,6 +62,7 @@ app.use('/api/customers', customersRoutes)
 app.use('/api/suppliers', suppliersRoutes)
 app.use('/api/finance', financeRoutes)
 app.use('/api/public-store', publicStoreRoutes)
+app.use('/api/accounting', accountingRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() })
