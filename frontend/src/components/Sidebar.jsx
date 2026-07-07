@@ -20,15 +20,14 @@ const Sidebar = () => {
     { label: 'Cocina', path: '/cocina', icon: '👨‍🍳', roles: ['admin', 'cocina'] },
     { label: 'Productos', path: '/productos', icon: '📦', roles: ['admin'] },
     { label: 'Finanzas', path: '/finanzas', icon: '📊', roles: ['admin'] },
+    { label: 'Contabilidad', path: '/contabilidad', icon: '🧾', roles: ['admin'] },
     { label: 'Categorías', path: '/categorias', icon: '📂', roles: ['admin'] },
     { label: 'Combos', path: '/combos', icon: '🍱', roles: ['admin'] },
     { label: 'Inventario', path: '/inventario', icon: '📈', roles: ['admin'] },
     { label: 'Clientes', path: '/clientes', icon: '👥', roles: ['admin', 'cajero'] },
     { label: 'Pedidos', path: '/pedidos', icon: '📋', roles: ['admin', 'cajero'] },
-
     { label: 'Pedidos Externos', path: '/pedidos-externos', icon: '🛵', roles: ['admin', 'cajero'] },
     { label: 'Canales', path: '/canales', icon: '🔌', roles: ['admin'] },
-
     { label: 'Reportes', path: '/reportes', icon: '📈', roles: ['admin'] },
     { label: 'Usuarios', path: '/usuarios', icon: '👤', roles: ['admin'] },
     { label: 'Configuración', path: '/configuracion', icon: '⚙️', roles: ['admin'] },
