@@ -115,6 +115,26 @@ const loadMonthlyData = async (query = {}) => {
   }
 }
 
+const getFoodCostStatus = (foodCostPercent, finalCost) => {
+  if (finalCost <= 0) {
+    return { status: 'SIN COSTO', level: 'gray' }
+  }
+
+  if (foodCostPercent < 35) {
+    return { status: 'EXCELENTE', level: 'green' }
+  }
+
+  if (foodCostPercent < 40) {
+    return { status: 'BUENO', level: 'green' }
+  }
+
+  if (foodCostPercent < 45) {
+    return { status: 'REVISAR', level: 'yellow' }
+  }
+
+  return { status: 'CRÍTICO', level: 'red' }
+}
+
 router.get('/dashboard', async (req, res) => {
   try {
     const { range, orders, expenses } = await loadMonthlyData(req.query)
@@ -598,6 +618,7 @@ router.get('/food-cost', async (req, res) => {
           inventory_item_id,
           quantity,
           unit,
+          recipe_section,
           inventory:inventory_item_id (
             id,
             name,
@@ -618,6 +639,14 @@ router.get('/food-cost', async (req, res) => {
     const foodCostProducts = (products || []).map((product) => {
       const price = num(product.price)
 
+      const laborMinutes = num(product.labor_minutes)
+      const laborCost = num(product.labor_cost)
+      const fixedCost = num(product.fixed_cost)
+      const variationPercent =
+        product.variation_percent === null || product.variation_percent === undefined
+          ? 5
+          : num(product.variation_percent)
+
       const ingredients = (product.recipe || []).map((item) => {
         const inventory = item.inventory || {}
         const quantity = num(item.quantity)
@@ -630,6 +659,7 @@ router.get('/food-cost', async (req, res) => {
         )
 
         const totalCost = quantity * unitCost
+        const section = String(item.recipe_section || 'MATERIA_PRIMA').toUpperCase()
 
         return {
           id: item.id,
@@ -638,51 +668,86 @@ router.get('/food-cost', async (req, res) => {
           unit: item.unit || inventory.unit || '',
           quantity,
           unit_cost: unitCost,
-          total_cost: totalCost
+          total_cost: totalCost,
+          section
         }
       })
 
-      const recipeCost = ingredients.reduce((sum, item) => {
-        return sum + num(item.total_cost)
-      }, 0)
+      const materialIngredients = ingredients.filter(
+        (item) => item.section === 'MATERIA_PRIMA'
+      )
 
-      const margin = price - recipeCost
+      const packagingIngredients = ingredients.filter(
+        (item) => item.section === 'EMPAQUE'
+      )
+
+      const otherIngredients = ingredients.filter(
+        (item) =>
+          item.section !== 'MATERIA_PRIMA' &&
+          item.section !== 'EMPAQUE'
+      )
+
+      const materialCost = materialIngredients.reduce(
+        (sum, item) => sum + num(item.total_cost),
+        0
+      )
+
+      const packagingCost = packagingIngredients.reduce(
+        (sum, item) => sum + num(item.total_cost),
+        0
+      )
+
+      const otherRecipeCost = otherIngredients.reduce(
+        (sum, item) => sum + num(item.total_cost),
+        0
+      )
+
+      const subtotalBeforeVariation =
+        materialCost + packagingCost + laborCost + fixedCost + otherRecipeCost
+
+      const variationCost = subtotalBeforeVariation * (variationPercent / 100)
+      const finalCost = subtotalBeforeVariation + variationCost
+      const margin = price - finalCost
 
       const foodCostPercent =
-        price > 0 ? Number(((recipeCost / price) * 100).toFixed(2)) : 0
+        price > 0 ? Number(((finalCost / price) * 100).toFixed(2)) : 0
 
-      let status = 'SIN COSTO'
-      let level = 'gray'
-
-      if (recipeCost > 0 && foodCostPercent < 35) {
-        status = 'EXCELENTE'
-        level = 'green'
-      } else if (recipeCost > 0 && foodCostPercent < 40) {
-        status = 'BUENO'
-        level = 'green'
-      } else if (recipeCost > 0 && foodCostPercent < 45) {
-        status = 'REVISAR'
-        level = 'yellow'
-      } else if (recipeCost > 0 && foodCostPercent >= 45) {
-        status = 'CRÍTICO'
-        level = 'red'
-      }
+      const { status, level } = getFoodCostStatus(foodCostPercent, finalCost)
 
       return {
         id: product.id,
         name: product.name,
         category: product.category?.name || 'Sin categoría',
         price,
-        recipe_cost: recipeCost,
+
+        recipe_cost: finalCost,
+        final_cost: finalCost,
         margin,
         food_cost_percent: foodCostPercent,
         status,
         level,
-        ingredients
+
+        professional_cost: {
+          material_cost: materialCost,
+          packaging_cost: packagingCost,
+          labor_minutes: laborMinutes,
+          labor_cost: laborCost,
+          fixed_cost: fixedCost,
+          other_recipe_cost: otherRecipeCost,
+          subtotal_before_variation: subtotalBeforeVariation,
+          variation_percent: variationPercent,
+          variation_cost: variationCost,
+          final_cost: finalCost
+        },
+
+        ingredients,
+        material_ingredients: materialIngredients,
+        packaging_ingredients: packagingIngredients,
+        other_ingredients: otherIngredients
       }
     })
 
-    const productsWithCost = foodCostProducts.filter((p) => p.recipe_cost > 0)
+    const productsWithCost = foodCostProducts.filter((p) => p.final_cost > 0)
 
     const averageFoodCost =
       productsWithCost.length > 0
@@ -697,30 +762,31 @@ router.get('/food-cost', async (req, res) => {
         : 0
 
     const totalSalesPrice = productsWithCost.reduce((sum, p) => sum + num(p.price), 0)
-    const totalRecipeCost = productsWithCost.reduce(
-      (sum, p) => sum + num(p.recipe_cost),
+    const totalFinalCost = productsWithCost.reduce(
+      (sum, p) => sum + num(p.final_cost),
       0
     )
 
     const weightedFoodCost =
       totalSalesPrice > 0
-        ? Number(((totalRecipeCost / totalSalesPrice) * 100).toFixed(2))
+        ? Number(((totalFinalCost / totalSalesPrice) * 100).toFixed(2))
         : 0
 
     const criticalProducts = foodCostProducts.filter(
-      (p) => p.recipe_cost > 0 && p.food_cost_percent >= 45
+      (p) => p.final_cost > 0 && p.food_cost_percent >= 45
     )
 
     const reviewProducts = foodCostProducts.filter(
-      (p) => p.recipe_cost > 0 && p.food_cost_percent >= 40 && p.food_cost_percent < 45
+      (p) => p.final_cost > 0 && p.food_cost_percent >= 40 && p.food_cost_percent < 45
     )
 
     const excellentProducts = foodCostProducts.filter(
-      (p) => p.recipe_cost > 0 && p.food_cost_percent < 40
+      (p) => p.final_cost > 0 && p.food_cost_percent < 40
     )
 
     res.json({
       success: true,
+      mode: 'PROFESSIONAL_FOOD_COST',
       summary: {
         products_count: foodCostProducts.length,
         products_with_cost: productsWithCost.length,
@@ -733,10 +799,10 @@ router.get('/food-cost', async (req, res) => {
       products: foodCostProducts
     })
   } catch (error) {
-    console.error('Food cost error:', error)
+    console.error('Professional food cost error:', error)
     res.status(500).json({
       success: false,
-      message: 'Error calculando Food Cost',
+      message: 'Error calculando Food Cost profesional',
       error: error.message
     })
   }
