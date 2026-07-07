@@ -33,22 +33,20 @@ const isExpenseMovement = (movement) => {
 
 const normalizeExpense = (movement) => {
   const gross = num(movement.total_amount || movement.amount || 0)
-
-  const documentType = String(
-    movement.document_type || 'BOLETA'
-  ).toUpperCase()
-
+  const documentType = String(movement.document_type || 'BOLETA').toUpperCase()
   const isInvoice = documentType === 'FACTURA'
 
-  const iva = movement.iva_amount !== null && movement.iva_amount !== undefined
-    ? num(movement.iva_amount)
-    : isInvoice
-      ? ivaFromGross(gross)
-      : 0
+  const iva =
+    movement.iva_amount !== null && movement.iva_amount !== undefined
+      ? num(movement.iva_amount)
+      : isInvoice
+        ? ivaFromGross(gross)
+        : 0
 
-  const net = movement.net_amount !== null && movement.net_amount !== undefined
-    ? num(movement.net_amount)
-    : gross - iva
+  const net =
+    movement.net_amount !== null && movement.net_amount !== undefined
+      ? num(movement.net_amount)
+      : gross - iva
 
   return {
     id: movement.id,
@@ -219,9 +217,10 @@ router.get('/dashboard', async (req, res) => {
       },
       result: {
         gross_profit_estimated: estimatedProfit,
-        margin_percent: totalSales > 0
-          ? Number(((estimatedProfit / totalSales) * 100).toFixed(2))
-          : 0
+        margin_percent:
+          totalSales > 0
+            ? Number(((estimatedProfit / totalSales) * 100).toFixed(2))
+            : 0
       },
       alerts
     })
@@ -287,7 +286,6 @@ router.get('/expenses/:id', async (req, res) => {
 router.post('/expenses', async (req, res) => {
   try {
     const body = req.body || {}
-
     const totalAmount = num(body.total_amount || body.amount)
 
     if (totalAmount <= 0) {
@@ -307,15 +305,17 @@ router.post('/expenses', async (req, res) => {
     const documentType = String(body.document_type || 'BOLETA').toUpperCase()
     const isInvoice = documentType === 'FACTURA'
 
-    const ivaAmount = body.iva_amount !== undefined && body.iva_amount !== ''
-      ? num(body.iva_amount)
-      : isInvoice
-        ? ivaFromGross(totalAmount)
-        : 0
+    const ivaAmount =
+      body.iva_amount !== undefined && body.iva_amount !== ''
+        ? num(body.iva_amount)
+        : isInvoice
+          ? ivaFromGross(totalAmount)
+          : 0
 
-    const netAmount = body.net_amount !== undefined && body.net_amount !== ''
-      ? num(body.net_amount)
-      : totalAmount - ivaAmount
+    const netAmount =
+      body.net_amount !== undefined && body.net_amount !== ''
+        ? num(body.net_amount)
+        : totalAmount - ivaAmount
 
     const payload = {
       cash_session_id: session.id,
@@ -361,15 +361,17 @@ router.put('/expenses/:id', async (req, res) => {
     const documentType = String(body.document_type || 'BOLETA').toUpperCase()
     const isInvoice = documentType === 'FACTURA'
 
-    const ivaAmount = body.iva_amount !== undefined && body.iva_amount !== ''
-      ? num(body.iva_amount)
-      : isInvoice
-        ? ivaFromGross(totalAmount)
-        : 0
+    const ivaAmount =
+      body.iva_amount !== undefined && body.iva_amount !== ''
+        ? num(body.iva_amount)
+        : isInvoice
+          ? ivaFromGross(totalAmount)
+          : 0
 
-    const netAmount = body.net_amount !== undefined && body.net_amount !== ''
-      ? num(body.net_amount)
-      : totalAmount - ivaAmount
+    const netAmount =
+      body.net_amount !== undefined && body.net_amount !== ''
+        ? num(body.net_amount)
+        : totalAmount - ivaAmount
 
     const payload = {
       amount: totalAmount,
@@ -502,9 +504,8 @@ router.get('/profit-loss', async (req, res) => {
         iva_credit: ivaCredit,
         net_expenses: netExpenses,
         estimated_profit: utility,
-        margin_percent: grossSales > 0
-          ? Number(((utility / grossSales) * 100).toFixed(2))
-          : 0
+        margin_percent:
+          grossSales > 0 ? Number(((utility / grossSales) * 100).toFixed(2)) : 0
       }
     })
   } catch (error) {
@@ -576,6 +577,166 @@ router.get('/alerts', async (req, res) => {
     console.error('Accounting alerts error:', error)
     res.status(500).json({
       message: 'Error generando alertas',
+      error: error.message
+    })
+  }
+})
+
+router.get('/food-cost', async (req, res) => {
+  try {
+    const { data: products, error } = await supabase
+      .from('products')
+      .select(`
+        *,
+        category:categories (
+          id,
+          name
+        ),
+        recipe:product_recipes (
+          id,
+          product_id,
+          inventory_item_id,
+          quantity,
+          unit,
+          inventory:inventory_item_id (
+            id,
+            name,
+            unit,
+            stock,
+            current_stock,
+            unit_cost,
+            last_purchase_price,
+            average_cost
+          )
+        )
+      `)
+      .eq('active', true)
+      .order('name', { ascending: true })
+
+    if (error) throw error
+
+    const foodCostProducts = (products || []).map((product) => {
+      const price = num(product.price)
+
+      const ingredients = (product.recipe || []).map((item) => {
+        const inventory = item.inventory || {}
+        const quantity = num(item.quantity)
+
+        const unitCost = num(
+          inventory.average_cost ||
+            inventory.unit_cost ||
+            inventory.last_purchase_price ||
+            0
+        )
+
+        const totalCost = quantity * unitCost
+
+        return {
+          id: item.id,
+          inventory_item_id: item.inventory_item_id,
+          name: inventory.name || 'Insumo',
+          unit: item.unit || inventory.unit || '',
+          quantity,
+          unit_cost: unitCost,
+          total_cost: totalCost
+        }
+      })
+
+      const recipeCost = ingredients.reduce((sum, item) => {
+        return sum + num(item.total_cost)
+      }, 0)
+
+      const margin = price - recipeCost
+
+      const foodCostPercent =
+        price > 0 ? Number(((recipeCost / price) * 100).toFixed(2)) : 0
+
+      let status = 'SIN COSTO'
+      let level = 'gray'
+
+      if (recipeCost > 0 && foodCostPercent < 35) {
+        status = 'EXCELENTE'
+        level = 'green'
+      } else if (recipeCost > 0 && foodCostPercent < 40) {
+        status = 'BUENO'
+        level = 'green'
+      } else if (recipeCost > 0 && foodCostPercent < 45) {
+        status = 'REVISAR'
+        level = 'yellow'
+      } else if (recipeCost > 0 && foodCostPercent >= 45) {
+        status = 'CRÍTICO'
+        level = 'red'
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        category: product.category?.name || 'Sin categoría',
+        price,
+        recipe_cost: recipeCost,
+        margin,
+        food_cost_percent: foodCostPercent,
+        status,
+        level,
+        ingredients
+      }
+    })
+
+    const productsWithCost = foodCostProducts.filter((p) => p.recipe_cost > 0)
+
+    const averageFoodCost =
+      productsWithCost.length > 0
+        ? Number(
+            (
+              productsWithCost.reduce(
+                (sum, p) => sum + num(p.food_cost_percent),
+                0
+              ) / productsWithCost.length
+            ).toFixed(2)
+          )
+        : 0
+
+    const totalSalesPrice = productsWithCost.reduce((sum, p) => sum + num(p.price), 0)
+    const totalRecipeCost = productsWithCost.reduce(
+      (sum, p) => sum + num(p.recipe_cost),
+      0
+    )
+
+    const weightedFoodCost =
+      totalSalesPrice > 0
+        ? Number(((totalRecipeCost / totalSalesPrice) * 100).toFixed(2))
+        : 0
+
+    const criticalProducts = foodCostProducts.filter(
+      (p) => p.recipe_cost > 0 && p.food_cost_percent >= 45
+    )
+
+    const reviewProducts = foodCostProducts.filter(
+      (p) => p.recipe_cost > 0 && p.food_cost_percent >= 40 && p.food_cost_percent < 45
+    )
+
+    const excellentProducts = foodCostProducts.filter(
+      (p) => p.recipe_cost > 0 && p.food_cost_percent < 40
+    )
+
+    res.json({
+      success: true,
+      summary: {
+        products_count: foodCostProducts.length,
+        products_with_cost: productsWithCost.length,
+        average_food_cost: averageFoodCost,
+        weighted_food_cost: weightedFoodCost,
+        critical_count: criticalProducts.length,
+        review_count: reviewProducts.length,
+        excellent_count: excellentProducts.length
+      },
+      products: foodCostProducts
+    })
+  } catch (error) {
+    console.error('Food cost error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Error calculando Food Cost',
       error: error.message
     })
   }
