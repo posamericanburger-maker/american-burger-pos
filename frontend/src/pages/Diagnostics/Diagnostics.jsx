@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react'
+
 import Sidebar from '../../components/Sidebar'
 import Navbar from '../../components/Navbar'
 
@@ -9,83 +15,180 @@ const API_URL =
 const FRONTEND_URL = window.location.origin
 const APP_VERSION = 'American Burger POS v1.0.0'
 
+const PURPOSE_OPTIONS = [
+  {
+    value: 'cash',
+    label: 'Caja',
+    description: 'Comprobante interno de caja'
+  },
+  {
+    value: 'kitchen',
+    label: 'Cocina',
+    description: 'Comandas de preparación'
+  },
+  {
+    value: 'delivery',
+    label: 'Delivery',
+    description: 'Pedidos de reparto'
+  },
+  {
+    value: 'customer_receipt',
+    label: 'Ticket cliente',
+    description: 'Comprobante para el cliente'
+  },
+  {
+    value: 'cash_closing',
+    label: 'Cierre de caja',
+    description: 'Resumen de cierre y arqueo'
+  }
+]
+
+const DEFAULT_ASSIGNMENT = {
+  purpose: 'cash',
+  agent_id: '',
+  printer_id: '',
+  paper_width: 80,
+  copies: 1,
+  auto_print: true,
+  active: true,
+  settings: {}
+}
+
+const getStoredToken = () =>
+  localStorage.getItem('token') ||
+  localStorage.getItem('authToken') ||
+  localStorage.getItem('access_token') ||
+  ''
+
+const formatDate = (value) => {
+  if (!value) return '-'
+
+  try {
+    return new Date(value).toLocaleString('es-CL')
+  } catch {
+    return value
+  }
+}
+
 const Diagnostics = () => {
   const [tests, setTests] = useState([])
   const [status, setStatus] = useState('Probando...')
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [running, setRunning] = useState(false)
 
-  const [printers, setPrinters] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ab_printers') || '[]')
-    } catch {
-      return []
-    }
-  })
+  const [agents, setAgents] = useState([])
+  const [printers, setPrinters] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [printJobs, setPrintJobs] = useState([])
 
-  const [printerForm, setPrinterForm] = useState({
-    name: '',
-    type: 'thermal_80mm',
-    connection: 'chrome_kiosk',
-    notes: ''
-  })
+  const [loadingPrinting, setLoadingPrinting] = useState(false)
+  const [savingAssignment, setSavingAssignment] = useState(false)
+  const [testingPrinter, setTestingPrinter] = useState(false)
 
-  const [showPrinterAdmin, setShowPrinterAdmin] = useState(false)
+  const [assignmentForm, setAssignmentForm] = useState(
+    DEFAULT_ASSIGNMENT
+  )
 
-  const getToken = () =>
-    localStorage.getItem('token') ||
-    localStorage.getItem('authToken') ||
-    localStorage.getItem('access_token') ||
-    ''
+  const [showJobs, setShowJobs] = useState(false)
 
-  const headers = useMemo(() => {
-    const token = getToken()
+  const token = getStoredToken()
 
-    return {
+  const headers = useMemo(
+    () => ({
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
-  }, [])
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`
+          }
+        : {})
+    }),
+    [token]
+  )
 
-  const runRequest = async (path) => {
-    const start = performance.now()
+  const apiRequest = useCallback(
+    async (
+      path,
+      {
+        method = 'GET',
+        body,
+        customHeaders = {}
+      } = {}
+    ) => {
+      const start = performance.now()
 
-    const response = await fetch(`${API_URL}${path}`, {
-      headers
-    })
+      const response = await fetch(`${API_URL}${path}`, {
+        method,
+        headers: {
+          ...headers,
+          ...customHeaders
+        },
+        ...(body !== undefined
+          ? {
+              body: JSON.stringify(body)
+            }
+          : {})
+      })
 
-    const ms = Math.round(performance.now() - start)
-    const text = await response.text()
+      const ms = Math.round(performance.now() - start)
+      const text = await response.text()
 
-    let data = null
+      let data = null
 
-    try {
-      data = text ? JSON.parse(text) : null
-    } catch {
-      data = { raw: text }
-    }
+      try {
+        data = text ? JSON.parse(text) : null
+      } catch {
+        data = {
+          raw: text
+        }
+      }
 
-    if (!response.ok) {
-      throw new Error(data?.message || data?.error || `Error HTTP ${response.status}`)
-    }
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            `Error HTTP ${response.status}`
+        )
+      }
 
-    return {
-      data,
-      ms
-    }
-  }
+      return {
+        data,
+        ms
+      }
+    },
+    [headers]
+  )
 
-  const createTestResult = (name, statusValue, detail, ms = null) => ({
+  const createTestResult = (
+    name,
+    testStatus,
+    detail,
+    ms = null
+  ) => ({
     id: `${name}-${Date.now()}-${Math.random()}`,
     name,
-    status: statusValue,
+    status: testStatus,
     detail,
     ms,
     time: new Date().toLocaleTimeString('es-CL')
   })
 
-  const testConnection = async () => {
+  const showSuccess = (text) => {
+    setError('')
+    setMessage(text)
+
+    window.setTimeout(() => {
+      setMessage('')
+    }, 5000)
+  }
+
+  const showError = (text) => {
+    setMessage('')
+    setError(text)
+  }
+
+  const testConnection = useCallback(async () => {
     setStatus('Probando...')
     setError('')
 
@@ -101,11 +204,393 @@ const Diagnostics = () => {
       setStatus('OK')
 
       return true
-    } catch (err) {
-      setError(err.message || 'No se pudo conectar')
+    } catch (requestError) {
       setStatus('Error')
+      setError(
+        requestError.message ||
+          'No se pudo conectar con el backend'
+      )
 
       return false
+    }
+  }, [])
+
+  const loadPrintingData = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!token) {
+        if (!silent) {
+          showError(
+            'No hay token de sesión. Inicia sesión nuevamente.'
+          )
+        }
+
+        return
+      }
+
+      setLoadingPrinting(true)
+
+      if (!silent) {
+        setError('')
+        setMessage('')
+      }
+
+      try {
+        const [
+          agentsResponse,
+          printersResponse,
+          assignmentsResponse,
+          jobsResponse
+        ] = await Promise.all([
+          apiRequest('/printing/agents'),
+          apiRequest('/printing/printers'),
+          apiRequest('/printing/assignments'),
+          apiRequest('/printing/jobs?limit=50')
+        ])
+
+        const loadedAgents =
+          agentsResponse.data?.agents || []
+
+        const loadedPrinters =
+          printersResponse.data?.printers || []
+
+        const loadedAssignments =
+          assignmentsResponse.data?.assignments || []
+
+        const loadedJobs =
+          jobsResponse.data?.jobs || []
+
+        setAgents(loadedAgents)
+        setPrinters(loadedPrinters)
+        setAssignments(loadedAssignments)
+        setPrintJobs(loadedJobs)
+
+        setAssignmentForm((current) => {
+          const selectedAgentExists = loadedAgents.some(
+            (agent) => agent.id === current.agent_id
+          )
+
+          const firstActiveAgent = loadedAgents.find(
+            (agent) => agent.active
+          )
+
+          const nextAgentId = selectedAgentExists
+            ? current.agent_id
+            : firstActiveAgent?.id || ''
+
+          const availablePrinters = loadedPrinters.filter(
+            (printer) =>
+              printer.agent_id === nextAgentId &&
+              printer.active
+          )
+
+          const selectedPrinterExists =
+            availablePrinters.some(
+              (printer) =>
+                printer.id === current.printer_id
+            )
+
+          return {
+            ...current,
+            agent_id: nextAgentId,
+            printer_id: selectedPrinterExists
+              ? current.printer_id
+              : availablePrinters[0]?.id || ''
+          }
+        })
+
+        if (!silent) {
+          showSuccess(
+            `${loadedAgents.length} agente(s) y ${loadedPrinters.length} impresora(s) cargados`
+          )
+        }
+      } catch (requestError) {
+        if (!silent) {
+          showError(
+            requestError.message ||
+              'No se pudo cargar el centro de impresión'
+          )
+        }
+      } finally {
+        setLoadingPrinting(false)
+      }
+    },
+    [apiRequest, token]
+  )
+
+  const availablePrinters = useMemo(
+    () =>
+      printers.filter(
+        (printer) =>
+          printer.agent_id === assignmentForm.agent_id
+      ),
+    [printers, assignmentForm.agent_id]
+  )
+
+  const selectedPrinter = useMemo(
+    () =>
+      printers.find(
+        (printer) =>
+          printer.id === assignmentForm.printer_id
+      ) || null,
+    [printers, assignmentForm.printer_id]
+  )
+
+  const onlineAgents = useMemo(
+    () =>
+      agents.filter(
+        (agent) =>
+          agent.active && agent.status === 'online'
+      ),
+    [agents]
+  )
+
+  const activePrinters = useMemo(
+    () =>
+      printers.filter(
+        (printer) =>
+          printer.active &&
+          printer.status !== 'offline'
+      ),
+    [printers]
+  )
+
+  const pendingJobs = useMemo(
+    () =>
+      printJobs.filter(
+        (job) =>
+          job.status === 'pending' ||
+          job.status === 'processing'
+      ),
+    [printJobs]
+  )
+
+  const failedJobs = useMemo(
+    () =>
+      printJobs.filter(
+        (job) => job.status === 'failed'
+      ),
+    [printJobs]
+  )
+
+  const handleAssignmentChange = (event) => {
+    const {
+      name,
+      value,
+      type,
+      checked
+    } = event.target
+
+    if (name === 'agent_id') {
+      const printersForAgent = printers.filter(
+        (printer) =>
+          printer.agent_id === value &&
+          printer.active
+      )
+
+      setAssignmentForm((current) => ({
+        ...current,
+        agent_id: value,
+        printer_id:
+          printersForAgent[0]?.id || ''
+      }))
+
+      return
+    }
+
+    setAssignmentForm((current) => ({
+      ...current,
+      [name]:
+        type === 'checkbox'
+          ? checked
+          : type === 'number'
+            ? Number(value)
+            : value
+    }))
+  }
+
+  const loadAssignmentForPurpose = (purpose) => {
+    const assignment = assignments.find(
+      (item) => item.purpose === purpose
+    )
+
+    if (!assignment) {
+      const firstActiveAgent = agents.find(
+        (agent) => agent.active
+      )
+
+      const printersForAgent = printers.filter(
+        (printer) =>
+          printer.agent_id === firstActiveAgent?.id &&
+          printer.active
+      )
+
+      setAssignmentForm({
+        ...DEFAULT_ASSIGNMENT,
+        purpose,
+        agent_id: firstActiveAgent?.id || '',
+        printer_id: printersForAgent[0]?.id || ''
+      })
+
+      return
+    }
+
+    setAssignmentForm({
+      purpose: assignment.purpose,
+      agent_id: assignment.agent_id,
+      printer_id: assignment.printer_id,
+      paper_width: assignment.paper_width || 80,
+      copies: assignment.copies || 1,
+      auto_print: Boolean(assignment.auto_print),
+      active: Boolean(assignment.active),
+      settings: assignment.settings || {}
+    })
+  }
+
+  const saveAssignment = async (event) => {
+    event.preventDefault()
+
+    if (!assignmentForm.agent_id) {
+      showError('Selecciona un computador agente')
+      return
+    }
+
+    if (!assignmentForm.printer_id) {
+      showError('Selecciona una impresora')
+      return
+    }
+
+    setSavingAssignment(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await apiRequest(
+        '/printing/assignments',
+        {
+          method: 'POST',
+          body: assignmentForm
+        }
+      )
+
+      showSuccess(
+        response.data?.message ||
+          'Asignación guardada correctamente'
+      )
+
+      await loadPrintingData({
+        silent: true
+      })
+    } catch (requestError) {
+      showError(
+        requestError.message ||
+          'No se pudo guardar la asignación'
+      )
+    } finally {
+      setSavingAssignment(false)
+    }
+  }
+
+  const sendTestPrint = async () => {
+    if (!assignmentForm.agent_id) {
+      showError('Selecciona un computador agente')
+      return
+    }
+
+    if (!assignmentForm.printer_id) {
+      showError('Selecciona una impresora')
+      return
+    }
+
+    setTestingPrinter(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await apiRequest('/printing/test', {
+        method: 'POST',
+        body: {
+          purpose: 'test',
+          agent_id: assignmentForm.agent_id,
+          printer_id: assignmentForm.printer_id,
+          paper_width: Number(
+            assignmentForm.paper_width || 80
+          )
+        }
+      })
+
+      showSuccess(
+        response.data?.message ||
+          'Prueba enviada a la cola de impresión'
+      )
+
+      await loadPrintingData({
+        silent: true
+      })
+    } catch (requestError) {
+      showError(
+        requestError.message ||
+          'No se pudo enviar la prueba de impresión'
+      )
+    } finally {
+      setTestingPrinter(false)
+    }
+  }
+
+  const retryJob = async (jobId) => {
+    try {
+      const response = await apiRequest(
+        `/printing/jobs/${jobId}/retry`,
+        {
+          method: 'POST',
+          body: {}
+        }
+      )
+
+      showSuccess(
+        response.data?.message ||
+          'Trabajo reenviado'
+      )
+
+      await loadPrintingData({
+        silent: true
+      })
+    } catch (requestError) {
+      showError(
+        requestError.message ||
+          'No se pudo reintentar el trabajo'
+      )
+    }
+  }
+
+  const cancelJob = async (jobId) => {
+    const confirmed = window.confirm(
+      '¿Seguro que deseas cancelar este trabajo de impresión?'
+    )
+
+    if (!confirmed) return
+
+    try {
+      const response = await apiRequest(
+        `/printing/jobs/${jobId}/cancel`,
+        {
+          method: 'POST',
+          body: {}
+        }
+      )
+
+      showSuccess(
+        response.data?.message ||
+          'Trabajo cancelado'
+      )
+
+      await loadPrintingData({
+        silent: true
+      })
+    } catch (requestError) {
+      showError(
+        requestError.message ||
+          'No se pudo cancelar el trabajo'
+      )
     }
   }
 
@@ -121,8 +606,6 @@ const Diagnostics = () => {
     }
 
     try {
-      const token = getToken()
-
       addTest(
         createTestResult(
           '1. Estado de conexión API',
@@ -132,7 +615,7 @@ const Diagnostics = () => {
       )
 
       try {
-        const health = await runRequest('/health')
+        const health = await apiRequest('/health')
 
         addTest(
           createTestResult(
@@ -145,14 +628,15 @@ const Diagnostics = () => {
 
         setStatus('OK')
         setResult(health.data)
-      } catch (err) {
+      } catch (requestError) {
         addTest(
           createTestResult(
             '1. Estado de conexión API',
             'error',
-            err.message
+            requestError.message
           )
         )
+
         setStatus('Error')
       }
 
@@ -160,15 +644,19 @@ const Diagnostics = () => {
         createTestResult(
           '2. Estado de login/token',
           token ? 'ok' : 'warning',
-          token ? 'Token encontrado en el navegador' : 'No hay token guardado'
+          token
+            ? 'Token encontrado en el navegador'
+            : 'No hay token guardado'
         )
       )
 
       addTest(
         createTestResult(
           '3. Usuario activo y rol',
-          'ok',
-          'Usuario leído desde sesión local si el sistema lo tiene disponible'
+          token ? 'ok' : 'warning',
+          token
+            ? 'Sesión disponible para rutas protegidas'
+            : 'No se pueden consultar rutas protegidas'
         )
       )
 
@@ -197,11 +685,26 @@ const Diagnostics = () => {
       )
 
       const routesToTest = [
-        ['7. Prueba Supabase / productos', '/products'],
-        ['8. Prueba ruta ventas / orders', '/orders'],
-        ['9. Prueba ruta inventario', '/inventory'],
-        ['10. Prueba ruta caja', '/cash/sessions'],
-        ['11. Prueba ruta usuarios', '/users']
+        [
+          '7. Prueba Supabase / productos',
+          '/products'
+        ],
+        [
+          '8. Prueba ruta ventas / orders',
+          '/orders'
+        ],
+        [
+          '9. Prueba ruta inventario',
+          '/inventory'
+        ],
+        [
+          '10. Prueba ruta caja',
+          '/cash/sessions'
+        ],
+        [
+          '11. Prueba ruta usuarios',
+          '/users'
+        ]
       ]
 
       let ordersCount = 0
@@ -212,15 +715,21 @@ const Diagnostics = () => {
 
       for (const [name, path] of routesToTest) {
         try {
-          const response = await runRequest(path)
+          const response = await apiRequest(path)
           const data = response.data || {}
 
           if (path === '/orders') {
-            ordersCount = data.orders?.length || data.data?.length || 0
+            ordersCount =
+              data.orders?.length ||
+              data.data?.length ||
+              0
           }
 
           if (path === '/products') {
-            productsCount = data.products?.length || data.data?.length || 0
+            productsCount =
+              data.products?.length ||
+              data.data?.length ||
+              0
           }
 
           if (path === '/inventory') {
@@ -232,19 +741,28 @@ const Diagnostics = () => {
           }
 
           if (path === '/users') {
-            usersCount = data.users?.length || data.data?.length || 0
+            usersCount =
+              data.users?.length ||
+              data.data?.length ||
+              0
           }
 
           if (path === '/cash/sessions') {
-            const sessions = data.sessions || data.cash_sessions || []
+            const sessions =
+              data.sessions ||
+              data.cash_sessions ||
+              []
 
             cashOpen = sessions.some((session) => {
-              const sessionStatus = String(session.status || '').toLowerCase()
+              const sessionStatus = String(
+                session.status || ''
+              ).toLowerCase()
 
               return (
                 sessionStatus === 'open' ||
                 sessionStatus === 'abierta' ||
-                (!session.closed_at && !session.closedAt)
+                (!session.closed_at &&
+                  !session.closedAt)
               )
             })
           }
@@ -257,12 +775,12 @@ const Diagnostics = () => {
               response.ms
             )
           )
-        } catch (err) {
+        } catch (requestError) {
           addTest(
             createTestResult(
               name,
               'error',
-              `${path}: ${err.message}`
+              `${path}: ${requestError.message}`
             )
           )
         }
@@ -276,15 +794,39 @@ const Diagnostics = () => {
         )
       )
 
-      addTest(
-        createTestResult(
-          '13. Estado impresora / Kiosk',
-          printers.length > 0 ? 'ok' : 'warning',
-          printers.length > 0
-            ? `${printers.length} impresora(s) configurada(s)`
-            : 'No hay impresoras configuradas'
+      try {
+        const printingResponse = await apiRequest(
+          '/printing/agents'
         )
-      )
+
+        const loadedAgents =
+          printingResponse.data?.agents || []
+
+        const onlineCount = loadedAgents.filter(
+          (agent) =>
+            agent.active &&
+            agent.status === 'online'
+        ).length
+
+        addTest(
+          createTestResult(
+            '13. Estado del sistema de impresión',
+            onlineCount > 0 ? 'ok' : 'warning',
+            onlineCount > 0
+              ? `${onlineCount} agente(s) de impresión conectado(s)`
+              : 'Backend disponible, pero no hay agentes conectados',
+            printingResponse.ms
+          )
+        )
+      } catch (requestError) {
+        addTest(
+          createTestResult(
+            '13. Estado del sistema de impresión',
+            'error',
+            requestError.message
+          )
+        )
+      }
 
       addTest(
         createTestResult(
@@ -301,62 +843,14 @@ const Diagnostics = () => {
           `Ventas: ${ordersCount} | Productos: ${productsCount} | Insumos: ${inventoryCount} | Usuarios: ${usersCount}`
         )
       )
-    } catch (err) {
-      setError(err.message || 'Error al ejecutar diagnóstico')
+    } catch (requestError) {
+      showError(
+        requestError.message ||
+          'Error ejecutando diagnóstico'
+      )
     } finally {
       setRunning(false)
     }
-  }
-
-  useEffect(() => {
-    testConnection()
-    runAllTests()
-  }, [])
-
-  const savePrinter = (event) => {
-    event.preventDefault()
-
-    if (!printerForm.name.trim()) {
-      alert('Ingresa el nombre de la impresora')
-      return
-    }
-
-    const newPrinter = {
-      id: Date.now(),
-      ...printerForm,
-      active: true,
-      created_at: new Date().toISOString()
-    }
-
-    const nextPrinters = [...printers, newPrinter]
-
-    setPrinters(nextPrinters)
-    localStorage.setItem('ab_printers', JSON.stringify(nextPrinters))
-
-    setPrinterForm({
-      name: '',
-      type: 'thermal_80mm',
-      connection: 'chrome_kiosk',
-      notes: ''
-    })
-  }
-
-  const togglePrinter = (id) => {
-    const nextPrinters = printers.map((printer) =>
-      printer.id === id
-        ? { ...printer, active: !printer.active }
-        : printer
-    )
-
-    setPrinters(nextPrinters)
-    localStorage.setItem('ab_printers', JSON.stringify(nextPrinters))
-  }
-
-  const deletePrinter = (id) => {
-    const nextPrinters = printers.filter((printer) => printer.id !== id)
-
-    setPrinters(nextPrinters)
-    localStorage.setItem('ab_printers', JSON.stringify(nextPrinters))
   }
 
   const copyDiagnostic = async () => {
@@ -369,6 +863,15 @@ Backend: ${API_URL}
 Versión: ${APP_VERSION}
 Estado API: ${status}
 
+IMPRESIÓN:
+Agentes registrados: ${agents.length}
+Agentes en línea: ${onlineAgents.length}
+Impresoras registradas: ${printers.length}
+Impresoras activas: ${activePrinters.length}
+Asignaciones: ${assignments.length}
+Trabajos pendientes: ${pendingJobs.length}
+Trabajos fallidos: ${failedJobs.length}
+
 PRUEBAS:
 ${tests
   .map(
@@ -378,75 +881,28 @@ ${tests
       }`
   )
   .join('\n')}
-
-IMPRESORAS:
-${
-  printers.length > 0
-    ? printers
-        .map(
-          (printer) =>
-            `- ${printer.name} | ${printer.type} | ${printer.connection} | ${
-              printer.active ? 'Activa' : 'Inactiva'
-            }`
-        )
-        .join('\n')
-    : 'Sin impresoras configuradas'
-}
 `
 
-    await navigator.clipboard.writeText(text)
-    alert('Diagnóstico copiado')
-  }
-
-  const testPrint = () => {
-    const win = window.open('', '_blank')
-
-    if (!win) return
-
-    win.document.write(`
-      <html>
-        <head>
-          <title>Prueba de impresión</title>
-          <style>
-            @page { size: 80mm auto; margin: 0; }
-            body {
-              width: 80mm;
-              padding: 6mm 4mm;
-              font-family: Arial, monospace;
-              font-size: 12px;
-            }
-            .center { text-align: center; }
-            .brand { font-size: 22px; font-weight: 900; }
-            .line { border-top: 1px dashed #000; margin: 8px 0; }
-          </style>
-        </head>
-        <body>
-          <div class="center">
-            <div class="brand">AMERICAN BURGER</div>
-            <div>PRUEBA DE IMPRESORA</div>
-          </div>
-          <div class="line"></div>
-          <div>Fecha: ${new Date().toLocaleString('es-CL')}</div>
-          <div>Modo recomendado: Chrome Kiosk</div>
-          <div>Papel: 80mm térmico</div>
-          <div class="line"></div>
-          <div class="center">Impresión OK</div>
-        </body>
-      </html>
-    `)
-
-    win.document.close()
-    win.focus()
-
-    setTimeout(() => {
-      win.print()
-    }, 500)
+    try {
+      await navigator.clipboard.writeText(text)
+      showSuccess('Diagnóstico copiado')
+    } catch {
+      showError('No se pudo copiar el diagnóstico')
+    }
   }
 
   const statusClass = (testStatus) => {
-    if (testStatus === 'ok') return 'bg-green-100 text-green-700 border-green-300'
-    if (testStatus === 'warning') return 'bg-yellow-100 text-yellow-700 border-yellow-300'
-    if (testStatus === 'error') return 'bg-red-100 text-red-700 border-red-300'
+    if (testStatus === 'ok') {
+      return 'bg-green-100 text-green-700 border-green-300'
+    }
+
+    if (testStatus === 'warning') {
+      return 'bg-yellow-100 text-yellow-700 border-yellow-300'
+    }
+
+    if (testStatus === 'error') {
+      return 'bg-red-100 text-red-700 border-red-300'
+    }
 
     return 'bg-gray-100 text-gray-700 border-gray-300'
   }
@@ -458,6 +914,37 @@ ${
 
     return 'Probando'
   }
+
+  const jobStatusClass = (jobStatus) => {
+    if (jobStatus === 'completed') {
+      return 'bg-green-100 text-green-700'
+    }
+
+    if (jobStatus === 'processing') {
+      return 'bg-blue-100 text-blue-700'
+    }
+
+    if (jobStatus === 'pending') {
+      return 'bg-yellow-100 text-yellow-700'
+    }
+
+    if (jobStatus === 'failed') {
+      return 'bg-red-100 text-red-700'
+    }
+
+    return 'bg-gray-100 text-gray-700'
+  }
+
+  useEffect(() => {
+    testConnection()
+    loadPrintingData({
+      silent: true
+    })
+  }, [testConnection, loadPrintingData])
+
+  useEffect(() => {
+    runAllTests()
+  }, [])
 
   return (
     <div className="page-container">
@@ -478,59 +965,30 @@ ${
               </h1>
 
               <p className="text-gray-300 mt-1">
-                Estado de API, módulos críticos, caja, rutas, token e impresión.
+                Estado de API, módulos críticos y sistema
+                profesional de impresión.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <button
+                type="button"
                 onClick={runAllTests}
                 disabled={running}
                 className="bg-yellow-400 text-black px-5 py-3 rounded-xl font-black disabled:opacity-50"
               >
-                {running ? 'Probando...' : '🧪 Probar todo'}
+                {running
+                  ? 'Probando...'
+                  : '🧪 Probar todo'}
               </button>
 
               <button
+                type="button"
                 onClick={copyDiagnostic}
                 className="bg-zinc-800 border border-zinc-700 px-5 py-3 rounded-xl font-bold"
               >
                 📋 Copiar diagnóstico
               </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-green-500">
-              <p className="text-gray-500 font-bold">Estado API</p>
-              <h2
-                className={`text-4xl font-black ${
-                  status === 'OK' ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {status}
-              </h2>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-black">
-              <p className="text-gray-500 font-bold">Backend</p>
-              <h2 className="text-sm font-black break-all mt-2">
-                {API_URL}
-              </h2>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-yellow-400">
-              <p className="text-gray-500 font-bold">Frontend</p>
-              <h2 className="text-sm font-black break-all mt-2">
-                {FRONTEND_URL}
-              </h2>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-blue-500">
-              <p className="text-gray-500 font-bold">Impresoras</p>
-              <h2 className="text-4xl font-black">
-                {printers.length}
-              </h2>
             </div>
           </div>
 
@@ -540,19 +998,93 @@ ${
             </div>
           )}
 
+          {message && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-5 py-4 rounded-xl font-bold">
+              {message}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-green-500">
+              <p className="text-gray-500 font-bold">
+                Estado API
+              </p>
+
+              <h2
+                className={`text-3xl font-black ${
+                  status === 'OK'
+                    ? 'text-green-600'
+                    : 'text-red-600'
+                }`}
+              >
+                {status}
+              </h2>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-black">
+              <p className="text-gray-500 font-bold">
+                Agentes
+              </p>
+
+              <h2 className="text-4xl font-black">
+                {agents.length}
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                {onlineAgents.length} en línea
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-yellow-400">
+              <p className="text-gray-500 font-bold">
+                Impresoras
+              </p>
+
+              <h2 className="text-4xl font-black">
+                {printers.length}
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                {activePrinters.length} activas
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-blue-500">
+              <p className="text-gray-500 font-bold">
+                Pendientes
+              </p>
+
+              <h2 className="text-4xl font-black">
+                {pendingJobs.length}
+              </h2>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-md p-5 border-l-8 border-red-500">
+              <p className="text-gray-500 font-bold">
+                Fallidos
+              </p>
+
+              <h2 className="text-4xl font-black">
+                {failedJobs.length}
+              </h2>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="bg-white rounded-2xl shadow-md p-6 xl:col-span-2">
-              <div className="flex justify-between items-center mb-5">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
                 <div>
                   <h2 className="text-2xl font-black">
                     15 pruebas del sistema
                   </h2>
+
                   <p className="text-gray-500">
                     Revisión rápida de módulos críticos.
                   </p>
                 </div>
 
                 <button
+                  type="button"
                   onClick={testConnection}
                   className="bg-black text-yellow-400 font-bold px-5 py-3 rounded-xl"
                 >
@@ -569,12 +1101,19 @@ ${
                   tests.map((test) => (
                     <div
                       key={test.id}
-                      className={`border rounded-xl p-4 ${statusClass(test.status)}`}
+                      className={`border rounded-xl p-4 ${statusClass(
+                        test.status
+                      )}`}
                     >
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                         <div>
-                          <h3 className="font-black">{test.name}</h3>
-                          <p className="text-sm">{test.detail}</p>
+                          <h3 className="font-black">
+                            {test.name}
+                          </h3>
+
+                          <p className="text-sm">
+                            {test.detail}
+                          </p>
                         </div>
 
                         <div className="text-right">
@@ -583,7 +1122,9 @@ ${
                           </span>
 
                           {test.ms !== null && (
-                            <p className="text-xs">{test.ms} ms</p>
+                            <p className="text-xs">
+                              {test.ms} ms
+                            </p>
                           )}
                         </div>
                       </div>
@@ -595,188 +1136,474 @@ ${
 
             <div className="space-y-6">
               <div className="bg-white rounded-2xl shadow-md p-6">
-                <h2 className="text-2xl font-black mb-4">
-                  Impresoras
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-2xl font-black">
+                      Centro de impresión
+                    </h2>
+
+                    <p className="text-sm text-gray-500">
+                      Agentes e impresoras conectadas
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => loadPrintingData()}
+                    disabled={loadingPrinting}
+                    className="bg-yellow-400 text-black px-4 py-2 rounded-xl font-black disabled:opacity-50"
+                  >
+                    {loadingPrinting ? '...' : '↻'}
+                  </button>
+                </div>
+
+                {agents.length === 0 ? (
+                  <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-xl p-4">
+                    <strong>
+                      No hay computadores registrados.
+                    </strong>
+
+                    <p className="text-sm mt-1">
+                      El agente local todavía no ha registrado
+                      ningún equipo de impresión.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {agents.map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="border rounded-xl p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-black">
+                              {agent.name}
+                            </h3>
+
+                            <p className="text-xs text-gray-500">
+                              {agent.machine_name}
+                            </p>
+                          </div>
+
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-black ${
+                              agent.status === 'online'
+                                ? 'bg-green-100 text-green-700'
+                                : agent.status === 'disabled'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {agent.status === 'online'
+                              ? 'En línea'
+                              : agent.status === 'disabled'
+                                ? 'Deshabilitado'
+                                : 'Desconectado'}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 text-sm text-gray-600">
+                          <p>
+                            Impresoras:{' '}
+                            <strong>
+                              {agent.printers?.length || 0}
+                            </strong>
+                          </p>
+
+                          <p>
+                            Última conexión:{' '}
+                            <strong>
+                              {formatDate(agent.last_seen_at)}
+                            </strong>
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <form
+                onSubmit={saveAssignment}
+                className="bg-white rounded-2xl shadow-md p-6"
+              >
+                <h2 className="text-2xl font-black mb-1">
+                  Asignar impresora
                 </h2>
 
-                <form onSubmit={savePrinter} className="space-y-3">
-                  <input
-                    className="input"
-                    value={printerForm.name}
-                    onChange={(event) =>
-                      setPrinterForm((current) => ({
-                        ...current,
-                        name: event.target.value
-                      }))
-                    }
-                    placeholder="Ej: Xprinter Cocina"
-                  />
+                <p className="text-sm text-gray-500 mb-5">
+                  Elige qué impresora utilizará cada área.
+                </p>
 
-                  <select
-                    className="input"
-                    value={printerForm.type}
-                    onChange={(event) =>
-                      setPrinterForm((current) => ({
-                        ...current,
-                        type: event.target.value
-                      }))
-                    }
-                  >
-                    <option value="thermal_80mm">Térmica 80mm</option>
-                    <option value="thermal_58mm">Térmica 58mm</option>
-                    <option value="inkjet">Inyección tinta</option>
-                    <option value="laser">Láser</option>
-                  </select>
+                <div className="space-y-4">
+                  <div>
+                    <label className="label">
+                      Área de impresión
+                    </label>
 
-                  <select
-                    className="input"
-                    value={printerForm.connection}
-                    onChange={(event) =>
-                      setPrinterForm((current) => ({
-                        ...current,
-                        connection: event.target.value
-                      }))
-                    }
-                  >
-                    <option value="chrome_kiosk">Chrome Kiosk</option>
-                    <option value="usb">USB</option>
-                    <option value="network">Red / WiFi</option>
-                    <option value="bluetooth">Bluetooth</option>
-                  </select>
+                    <select
+                      className="input"
+                      name="purpose"
+                      value={assignmentForm.purpose}
+                      onChange={(event) => {
+                        handleAssignmentChange(event)
+                        loadAssignmentForPurpose(
+                          event.target.value
+                        )
+                      }}
+                    >
+                      {PURPOSE_OPTIONS.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                  <textarea
-                    className="input min-h-[80px]"
-                    value={printerForm.notes}
-                    onChange={(event) =>
-                      setPrinterForm((current) => ({
-                        ...current,
-                        notes: event.target.value
-                      }))
-                    }
-                    placeholder="Notas: cocina, caja, delivery..."
-                  />
+                  <div>
+                    <label className="label">
+                      Computador agente
+                    </label>
+
+                    <select
+                      className="input"
+                      name="agent_id"
+                      value={assignmentForm.agent_id}
+                      onChange={handleAssignmentChange}
+                    >
+                      <option value="">
+                        Seleccionar computador
+                      </option>
+
+                      {agents.map((agent) => (
+                        <option
+                          key={agent.id}
+                          value={agent.id}
+                        >
+                          {agent.name} — {agent.machine_name}
+                          {agent.status === 'online'
+                            ? ' (En línea)'
+                            : ' (Desconectado)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">
+                      Impresora de Windows
+                    </label>
+
+                    <select
+                      className="input"
+                      name="printer_id"
+                      value={assignmentForm.printer_id}
+                      onChange={handleAssignmentChange}
+                    >
+                      <option value="">
+                        Seleccionar impresora
+                      </option>
+
+                      {availablePrinters.map((printer) => (
+                        <option
+                          key={printer.id}
+                          value={printer.id}
+                        >
+                          {printer.display_name}
+                          {printer.is_default
+                            ? ' (Predeterminada)'
+                            : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">
+                        Papel
+                      </label>
+
+                      <select
+                        className="input"
+                        name="paper_width"
+                        value={assignmentForm.paper_width}
+                        onChange={handleAssignmentChange}
+                      >
+                        <option value={80}>80 mm</option>
+                        <option value={58}>58 mm</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="label">
+                        Copias
+                      </label>
+
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        max="10"
+                        name="copies"
+                        value={assignmentForm.copies}
+                        onChange={handleAssignmentChange}
+                      />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-3 font-bold">
+                    <input
+                      type="checkbox"
+                      name="auto_print"
+                      checked={assignmentForm.auto_print}
+                      onChange={handleAssignmentChange}
+                    />
+
+                    Imprimir automáticamente
+                  </label>
 
                   <button
                     type="submit"
-                    className="w-full bg-yellow-400 text-black font-black py-3 rounded-xl"
+                    disabled={savingAssignment}
+                    className="w-full bg-black text-yellow-400 font-black py-3 rounded-xl disabled:opacity-50"
                   >
-                    ➕ Agregar impresora
-                  </button>
-                </form>
-
-                <div className="grid grid-cols-1 gap-3 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowPrinterAdmin(!showPrinterAdmin)}
-                    className="w-full bg-black text-yellow-400 font-black py-3 rounded-xl"
-                  >
-                    🖨️ Administrar impresoras
+                    {savingAssignment
+                      ? 'Guardando...'
+                      : '💾 Guardar asignación'}
                   </button>
 
                   <button
                     type="button"
-                    onClick={testPrint}
-                    className="w-full border border-gray-300 font-bold py-3 rounded-xl hover:bg-gray-100"
+                    onClick={sendTestPrint}
+                    disabled={
+                      testingPrinter ||
+                      !assignmentForm.printer_id
+                    }
+                    className="w-full bg-yellow-400 text-black font-black py-3 rounded-xl disabled:opacity-50"
                   >
-                    🧾 Prueba de impresión
+                    {testingPrinter
+                      ? 'Enviando prueba...'
+                      : '🧾 Enviar prueba de impresión'}
                   </button>
+
+                  {selectedPrinter && (
+                    <div className="bg-gray-100 rounded-xl p-3 text-sm">
+                      <p>
+                        <strong>Seleccionada:</strong>{' '}
+                        {selectedPrinter.display_name}
+                      </p>
+
+                      <p>
+                        <strong>Estado:</strong>{' '}
+                        {selectedPrinter.status}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-md p-6">
-                <h2 className="text-2xl font-black mb-4">
-                  Estado impresión / Kiosk
-                </h2>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between border-b pb-2">
-                    <span>Modo recomendado</span>
-                    <strong>Chrome Kiosk</strong>
-                  </div>
-
-                  <div className="flex justify-between border-b pb-2">
-                    <span>Papel térmico</span>
-                    <strong>80mm</strong>
-                  </div>
-
-                  <div className="flex justify-between border-b pb-2">
-                    <span>Ventana impresión</span>
-                    <strong>Automática</strong>
-                  </div>
-
-                  <div className="flex justify-between border-b pb-2">
-                    <span>Impresoras guardadas</span>
-                    <strong>{printers.length}</strong>
-                  </div>
-                </div>
-              </div>
+              </form>
             </div>
           </div>
 
-          {showPrinterAdmin && (
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+              <div>
+                <h2 className="text-2xl font-black">
+                  Asignaciones configuradas
+                </h2>
+
+                <p className="text-gray-500">
+                  Impresoras asignadas a cada operación.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowJobs(!showJobs)}
+                className="bg-black text-yellow-400 px-5 py-3 rounded-xl font-black"
+              >
+                {showJobs
+                  ? 'Ocultar cola'
+                  : 'Ver cola de impresión'}
+              </button>
+            </div>
+
+            {assignments.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                Todavía no hay impresoras asignadas.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full text-left">
+                  <thead className="bg-black text-yellow-400">
+                    <tr>
+                      <th className="py-4 px-4">Área</th>
+                      <th className="px-4">Computador</th>
+                      <th className="px-4">Impresora</th>
+                      <th className="px-4">Papel</th>
+                      <th className="px-4">Copias</th>
+                      <th className="px-4">Automática</th>
+                      <th className="px-4">Estado</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {assignments.map((assignment) => {
+                      const purposeOption =
+                        PURPOSE_OPTIONS.find(
+                          (option) =>
+                            option.value ===
+                            assignment.purpose
+                        )
+
+                      return (
+                        <tr
+                          key={assignment.id}
+                          className="border-b hover:bg-yellow-50"
+                        >
+                          <td className="py-4 px-4 font-black">
+                            {purposeOption?.label ||
+                              assignment.purpose}
+                          </td>
+
+                          <td className="px-4">
+                            {assignment.agent?.name || '-'}
+                          </td>
+
+                          <td className="px-4">
+                            {assignment.printer?.display_name ||
+                              '-'}
+                          </td>
+
+                          <td className="px-4">
+                            {assignment.paper_width} mm
+                          </td>
+
+                          <td className="px-4">
+                            {assignment.copies}
+                          </td>
+
+                          <td className="px-4">
+                            {assignment.auto_print ? 'Sí' : 'No'}
+                          </td>
+
+                          <td className="px-4">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-black ${
+                                assignment.active
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {assignment.active
+                                ? 'Activa'
+                                : 'Inactiva'}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {showJobs && (
             <div className="bg-white rounded-2xl shadow-md p-6">
               <h2 className="text-2xl font-black mb-4">
-                Administrar impresoras
+                Cola de impresión
               </h2>
 
-              {printers.length === 0 ? (
-                <div className="text-center text-gray-500 py-10">
-                  No hay impresoras agregadas.
+              {printJobs.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  No hay trabajos de impresión.
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border">
                   <table className="w-full text-left">
                     <thead className="bg-black text-yellow-400">
                       <tr>
-                        <th className="py-4 px-4">Nombre</th>
-                        <th className="px-4">Tipo</th>
-                        <th className="px-4">Conexión</th>
+                        <th className="py-4 px-4">Fecha</th>
+                        <th className="px-4">Título</th>
+                        <th className="px-4">Área</th>
+                        <th className="px-4">Impresora</th>
+                        <th className="px-4">Intentos</th>
                         <th className="px-4">Estado</th>
-                        <th className="px-4">Notas</th>
-                        <th className="px-4 text-right">Acciones</th>
+                        <th className="px-4 text-right">
+                          Acciones
+                        </th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {printers.map((printer) => (
-                        <tr key={printer.id} className="border-b hover:bg-yellow-50">
-                          <td className="py-4 px-4 font-bold">
-                            {printer.name}
+                      {printJobs.map((job) => (
+                        <tr
+                          key={job.id}
+                          className="border-b hover:bg-gray-50"
+                        >
+                          <td className="py-4 px-4 text-sm">
+                            {formatDate(job.created_at)}
                           </td>
 
-                          <td className="px-4">{printer.type}</td>
+                          <td className="px-4 font-bold">
+                            {job.title || 'Impresión'}
+                          </td>
 
-                          <td className="px-4">{printer.connection}</td>
+                          <td className="px-4">
+                            {job.purpose}
+                          </td>
+
+                          <td className="px-4">
+                            {job.printer?.display_name || '-'}
+                          </td>
+
+                          <td className="px-4">
+                            {job.attempts}/{job.max_attempts}
+                          </td>
 
                           <td className="px-4">
                             <span
-                              className={`px-3 py-1 rounded-full font-bold text-sm ${
-                                printer.active
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-red-100 text-red-700'
-                              }`}
+                              className={`px-3 py-1 rounded-full text-xs font-black ${jobStatusClass(
+                                job.status
+                              )}`}
                             >
-                              {printer.active ? 'Activa' : 'Inactiva'}
+                              {job.status}
                             </span>
                           </td>
 
-                          <td className="px-4">{printer.notes || '-'}</td>
-
                           <td className="px-4 text-right">
                             <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => togglePrinter(printer.id)}
-                                className="bg-yellow-400 text-black px-3 py-2 rounded-lg font-bold"
-                              >
-                                {printer.active ? 'Desactivar' : 'Activar'}
-                              </button>
+                              {job.status === 'failed' && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    retryJob(job.id)
+                                  }
+                                  className="bg-yellow-400 text-black px-3 py-2 rounded-lg font-bold"
+                                >
+                                  Reintentar
+                                </button>
+                              )}
 
-                              <button
-                                onClick={() => deletePrinter(printer.id)}
-                                className="bg-red-600 text-white px-3 py-2 rounded-lg font-bold"
-                              >
-                                Eliminar
-                              </button>
+                              {[
+                                'pending',
+                                'failed'
+                              ].includes(job.status) && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    cancelJob(job.id)
+                                  }
+                                  className="bg-red-600 text-white px-3 py-2 rounded-lg font-bold"
+                                >
+                                  Cancelar
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -794,7 +1621,9 @@ ${
             </h2>
 
             <pre className="bg-gray-100 rounded-xl p-4 overflow-x-auto text-sm">
-              {result ? JSON.stringify(result, null, 2) : 'Sin resultado todavía'}
+              {result
+                ? JSON.stringify(result, null, 2)
+                : 'Sin resultado todavía'}
             </pre>
           </div>
         </div>
