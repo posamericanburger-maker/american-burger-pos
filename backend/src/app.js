@@ -19,57 +19,168 @@ import suppliersRoutes from './routes/suppliers.routes.js'
 import financeRoutes from './routes/finance.routes.js'
 import publicStoreRoutes from './routes/public-store.routes.js'
 import accountingRoutes from './routes/accounting.routes.js'
+import printingRoutes from './routes/printing.routes.js'
 
 import { errorHandler } from './middleware/errorHandler.js'
 import { logger } from './utils/logger.js'
 
 const app = express()
 
+app.set('trust proxy', 1)
+
 app.use(helmet())
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
-}))
+const allowedOrigins = String(
+  process.env.CORS_ORIGIN || '*'
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true)
+      }
+
+      if (
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true)
+      }
+
+      return callback(
+        new Error(
+          `Origen no permitido por CORS: ${origin}`
+        )
+      )
+    },
+
+    credentials:
+      !allowedOrigins.includes('*'),
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Agent-Id',
+      'X-Agent-Secret'
+    ],
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS'
+    ]
+  })
+)
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100000,
-  message: 'Demasiadas solicitudes desde esta IP'
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message:
+      'Demasiadas solicitudes desde esta IP'
+  }
 })
 
 app.use(limiter)
 
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ limit: '10mb', extended: true }))
+app.use(
+  express.json({
+    limit: '10mb'
+  })
+)
+
+app.use(
+  express.urlencoded({
+    limit: '10mb',
+    extended: true
+  })
+)
 
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`)
+  logger.info(
+    `${req.method} ${req.path}`
+  )
+
   next()
 })
 
 app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
-app.use('/api/external-orders', externalOrdersRoutes)
+app.use(
+  '/api/external-orders',
+  externalOrdersRoutes
+)
 app.use('/api/cash', cashRoutes)
-app.use('/api/inventory', inventoryRoutes)
+app.use(
+  '/api/inventory',
+  inventoryRoutes
+)
 app.use('/api/users', userRoutes)
 app.use('/api/reports', reportRoutes)
-app.use('/api/settings', settingsRoutes)
-app.use('/api/categories', categoriesRoutes)
-app.use('/api/customers', customersRoutes)
-app.use('/api/suppliers', suppliersRoutes)
+app.use(
+  '/api/settings',
+  settingsRoutes
+)
+app.use(
+  '/api/categories',
+  categoriesRoutes
+)
+app.use(
+  '/api/customers',
+  customersRoutes
+)
+app.use(
+  '/api/suppliers',
+  suppliersRoutes
+)
 app.use('/api/finance', financeRoutes)
-app.use('/api/public-store', publicStoreRoutes)
-app.use('/api/accounting', accountingRoutes)
+app.use(
+  '/api/public-store',
+  publicStoreRoutes
+)
+app.use(
+  '/api/accounting',
+  accountingRoutes
+)
+
+/**
+ * Sistema de impresión remota.
+ */
+app.use(
+  '/api/printing',
+  printingRoutes
+)
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() })
+  res.json({
+    status: 'OK',
+    timestamp:
+      new Date().toISOString(),
+    services: {
+      api: 'online',
+      printing:
+        'available'
+    }
+  })
 })
 
 app.use((req, res) => {
-  res.status(404).json({ message: 'Ruta no encontrada' })
+  res.status(404).json({
+    success: false,
+    message:
+      'Ruta no encontrada'
+  })
 })
 
 app.use(errorHandler)
