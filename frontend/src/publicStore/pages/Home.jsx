@@ -75,8 +75,15 @@ const getProductText = (product = {}) =>
       .join(' ')
   )
 
+const includesAny = (text, words = []) =>
+  words.some((word) => text.includes(word))
+
 const toBoolean = (value, defaultValue = true) => {
-  if (value === undefined || value === null || value === '') {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
     return defaultValue
   }
 
@@ -91,17 +98,30 @@ const toBoolean = (value, defaultValue = true) => {
   const normalized = normalizeText(value)
 
   if (
-    ['false', '0', 'no', 'inactive', 'inactivo', 'agotado', 'disabled'].includes(
-      normalized
-    )
+    [
+      'false',
+      '0',
+      'no',
+      'inactive',
+      'inactivo',
+      'agotado',
+      'disabled'
+    ].includes(normalized)
   ) {
     return false
   }
 
   if (
-    ['true', '1', 'si', 'yes', 'active', 'activo', 'disponible', 'enabled'].includes(
-      normalized
-    )
+    [
+      'true',
+      '1',
+      'si',
+      'yes',
+      'active',
+      'activo',
+      'disponible',
+      'enabled'
+    ].includes(normalized)
   ) {
     return true
   }
@@ -119,26 +139,74 @@ const isAvailableProduct = (product = {}) => {
   return toBoolean(availableValue, true)
 }
 
-const includesAny = (text, words = []) =>
-  words.some((word) => text.includes(word))
+const isComboProduct = (product = {}) => {
+  const text = getProductText(product)
+
+  return (
+    text.includes('arma tu combo') ||
+    text.includes('armar tu combo') ||
+    text.includes('arma el combo')
+  )
+}
 
 const isBurgerProduct = (product = {}) => {
   const text = getProductText(product)
 
+  /*
+   * Evita confundir el producto "Arma tu Combo"
+   * con una hamburguesa.
+   */
+  if (isComboProduct(product)) {
+    return false
+  }
+
   return includesAny(text, [
     'burger',
     'hamburguesa',
-    'cheese',
+    'cheese burger',
+    'cheeseburger',
     'bacon cheese',
     'bbq burger',
     'american burger',
     'california burger',
-    'oklahoma'
+    'oklahoma burger',
+    'crispy burger',
+    'veggie burger'
+  ])
+}
+
+const isChickenProduct = (product = {}) => {
+  const text = getProductText(product)
+
+  /*
+   * Crispy Burger contiene la palabra crispy,
+   * pero debe tratarse primero como hamburguesa.
+   */
+  if (isBurgerProduct(product)) {
+    return false
+  }
+
+  return includesAny(text, [
+    'pollo',
+    'alita',
+    'alitas',
+    'tender',
+    'tenders',
+    'chicken',
+    'crispy'
   ])
 }
 
 const isFriesProduct = (product = {}) => {
   const text = getProductText(product)
+
+  /*
+   * Arma tu Combo puede mencionar papas en su descripción,
+   * pero no debe identificarse como una porción de papas.
+   */
+  if (isComboProduct(product)) {
+    return false
+  }
 
   return includesAny(text, [
     'papa',
@@ -152,6 +220,10 @@ const isFriesProduct = (product = {}) => {
 
 const isDrinkProduct = (product = {}) => {
   const text = getProductText(product)
+
+  if (isComboProduct(product)) {
+    return false
+  }
 
   return includesAny(text, [
     'bebida',
@@ -174,16 +246,25 @@ const isDrinkProduct = (product = {}) => {
   ])
 }
 
-const getFriesScore = (product = {}) => {
+const getComboScore = (product = {}) => {
   const text = getProductText(product)
   let score = 0
 
-  if (isFriesProduct(product)) score += 100
-  if (text.includes('papas fritas')) score += 40
-  if (text.includes('american fries')) score += 35
-  if (text.includes('200')) score += 20
-  if (text.includes('individual')) score += 10
-  if (text.includes('combo')) score -= 30
+  if (isComboProduct(product)) {
+    score += 200
+  }
+
+  if (text.includes('arma tu combo')) {
+    score += 100
+  }
+
+  if (text.includes('papas')) {
+    score += 10
+  }
+
+  if (text.includes('bebida')) {
+    score += 10
+  }
 
   return score
 }
@@ -192,24 +273,58 @@ const getDrinkScore = (product = {}) => {
   const text = getProductText(product)
   let score = 0
 
-  if (isDrinkProduct(product)) score += 100
-  if (text.includes('bebida lata')) score += 45
-  if (text.includes('lata')) score += 30
-  if (includesAny(text, ['330', '350', '355'])) score += 20
-  if (includesAny(text, ['coca', 'sprite', 'fanta', 'pepsi'])) score += 15
-  if (text.includes('combo')) score -= 30
+  if (isDrinkProduct(product)) {
+    score += 100
+  }
+
+  if (text.includes('bebida lata')) {
+    score += 45
+  }
+
+  if (text.includes('lata')) {
+    score += 30
+  }
+
+  if (
+    includesAny(text, [
+      '330',
+      '350',
+      '355'
+    ])
+  ) {
+    score += 20
+  }
+
+  if (
+    includesAny(text, [
+      'coca',
+      'sprite',
+      'fanta',
+      'pepsi'
+    ])
+  ) {
+    score += 15
+  }
+
+  if (text.includes('combo')) {
+    score -= 50
+  }
 
   return score
 }
 
-const findBestProduct = (products = [], scoreFunction) =>
+const findBestProduct = (
+  products = [],
+  scoreFunction
+) =>
   [...products]
     .map((product) => ({
       product,
       score: scoreFunction(product)
     }))
     .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)[0]?.product || null
+    .sort((a, b) => b.score - a.score)[0]
+    ?.product || null
 
 const getReducedMotion = () => {
   if (
@@ -265,8 +380,9 @@ function Home() {
   const [comboSuggestion, setComboSuggestion] =
     useState({
       open: false,
-      burger: null,
-      fries: null,
+      sourceProduct: null,
+      suggestionType: '',
+      combo: null,
       drink: null
     })
 
@@ -301,41 +417,27 @@ function Home() {
   }, [])
 
   const searchedProducts = useMemo(() => {
-    const term = search.trim().toLowerCase()
+    const term = normalizeText(search)
 
     if (!term) {
       return filteredProducts
     }
 
-    return filteredProducts.filter((product) => {
-      const name = String(
-        product.name || ''
-      ).toLowerCase()
-
-      const description = String(
-        product.description || ''
-      ).toLowerCase()
-
-      const category = String(
-        product.category_name || ''
-      ).toLowerCase()
-
-      return (
-        name.includes(term) ||
-        description.includes(term) ||
-        category.includes(term)
-      )
-    })
+    return filteredProducts.filter((product) =>
+      getProductText(product).includes(term)
+    )
   }, [filteredProducts, search])
 
   const suggestionProducts = useMemo(() => {
     const availableProducts = (
-      Array.isArray(products) ? products : []
+      Array.isArray(products)
+        ? products
+        : []
     ).filter(isAvailableProduct)
 
-    const fries = findBestProduct(
+    const combo = findBestProduct(
       availableProducts,
-      getFriesScore
+      getComboScore
     )
 
     const drink = findBestProduct(
@@ -344,7 +446,7 @@ function Home() {
     )
 
     return {
-      fries,
+      combo,
       drink
     }
   }, [products])
@@ -370,8 +472,9 @@ function Home() {
   const closeComboSuggestion = () => {
     setComboSuggestion({
       open: false,
-      burger: null,
-      fries: null,
+      sourceProduct: null,
+      suggestionType: '',
+      combo: null,
       drink: null
     })
 
@@ -384,32 +487,7 @@ function Home() {
     }
   }
 
-  const openComboSuggestion = (burger) => {
-    if (!isBurgerProduct(burger)) {
-      return
-    }
-
-    const fries = suggestionProducts.fries
-    const drink = suggestionProducts.drink
-
-    if (!fries && !drink) {
-      console.warn(
-        'No se encontraron papas ni bebidas disponibles para recomendar.',
-        {
-          burger,
-          products
-        }
-      )
-      return
-    }
-
-    setComboSuggestion({
-      open: true,
-      burger,
-      fries,
-      drink
-    })
-
+  const scheduleComboClose = () => {
     if (comboTimeoutRef.current) {
       window.clearTimeout(
         comboTimeoutRef.current
@@ -420,6 +498,89 @@ function Home() {
       window.setTimeout(() => {
         closeComboSuggestion()
       }, 12000)
+  }
+
+  const openComboSuggestion = (product) => {
+    const combo = suggestionProducts.combo
+    const drink = suggestionProducts.drink
+
+    /*
+     * Hamburguesas:
+     * recomienda el producto real "Arma tu Combo".
+     */
+    if (isBurgerProduct(product)) {
+      if (!combo) {
+        console.warn(
+          'No se encontró un producto disponible llamado Arma tu Combo.',
+          {
+            selectedProduct: product,
+            products
+          }
+        )
+
+        return
+      }
+
+      setComboSuggestion({
+        open: true,
+        sourceProduct: product,
+        suggestionType: 'combo',
+        combo,
+        drink: null
+      })
+
+      scheduleComboClose()
+      return
+    }
+
+    /*
+     * Pollo:
+     * recomienda únicamente una bebida.
+     */
+    if (isChickenProduct(product)) {
+      if (!drink) {
+        console.warn(
+          'No se encontró una bebida disponible para recomendar.',
+          {
+            selectedProduct: product,
+            products
+          }
+        )
+
+        return
+      }
+
+      setComboSuggestion({
+        open: true,
+        sourceProduct: product,
+        suggestionType: 'drink',
+        combo: null,
+        drink
+      })
+
+      scheduleComboClose()
+      return
+    }
+
+    /*
+     * Papas:
+     * recomienda únicamente una bebida.
+     */
+    if (isFriesProduct(product)) {
+      if (!drink) {
+        return
+      }
+
+      setComboSuggestion({
+        open: true,
+        sourceProduct: product,
+        suggestionType: 'drink',
+        combo: null,
+        drink
+      })
+
+      scheduleComboClose()
+    }
   }
 
   const bounceCart = () => {
@@ -435,7 +596,8 @@ function Home() {
     cartButton.animate(
       [
         {
-          transform: 'scale(1) translateY(0)'
+          transform:
+            'scale(1) translateY(0)'
         },
         {
           transform:
@@ -446,7 +608,8 @@ function Home() {
             'scale(0.97) translateY(2px)'
         },
         {
-          transform: 'scale(1) translateY(0)'
+          transform:
+            'scale(1) translateY(0)'
         }
       ],
       {
@@ -491,7 +654,8 @@ function Home() {
       64,
       Math.min(
         110,
-        Number(sourceRect.width || 80) * 0.42
+        Number(sourceRect.width || 80) *
+          0.42
       )
     )
 
@@ -561,9 +725,8 @@ function Home() {
       flyingElement.textContent =
         animationData.emoji || '🍔'
 
-      flyingElement.style.fontSize = `${Math.round(
-        startSize * 0.58
-      )}px`
+      flyingElement.style.fontSize =
+        `${Math.round(startSize * 0.58)}px`
     }
 
     document.body.appendChild(
@@ -572,7 +735,6 @@ function Home() {
 
     const deltaX = targetX - startX
     const deltaY = targetY - startY
-
     const middleX = deltaX * 0.52
 
     const middleY =
@@ -663,11 +825,11 @@ function Home() {
     openComboSuggestion(product)
   }
 
-  const handleAddSuggestedCombo = () => {
-    const fries = comboSuggestion.fries
-    const drink = comboSuggestion.drink
-
-    const productsToAdd = [fries, drink].filter(Boolean)
+  const handleAddSuggestedProduct = () => {
+    const productsToAdd = [
+      comboSuggestion.combo,
+      comboSuggestion.drink
+    ].filter(Boolean)
 
     if (productsToAdd.length === 0) {
       closeComboSuggestion()
@@ -681,11 +843,16 @@ function Home() {
     setCartOpen(false)
 
     const addedNames = productsToAdd
-      .map((product) => product.name || product.product_name || 'Producto')
+      .map(
+        (product) =>
+          product.name ||
+          product.product_name ||
+          'Producto'
+      )
       .join(' y ')
 
     showAddedMessage(
-      `${addedNames} agregados al pedido`
+      `${addedNames} agregado al pedido`
     )
 
     closeComboSuggestion()
@@ -727,7 +894,9 @@ Monto: ${money(total)}
 `.trim()
 
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(
+        text
+      )
 
       setMessage(
         'Datos bancarios copiados'
@@ -771,7 +940,8 @@ Monto: ${money(total)}
     }
 
     if (
-      customer.deliveryType === 'delivery' &&
+      customer.deliveryType ===
+        'delivery' &&
       !customer.address.trim()
     ) {
       setMessage(
@@ -815,8 +985,8 @@ Monto: ${money(total)}
 
         unit_price: Number(
           item.unit_price ||
-            item.price ||
-            0
+          item.price ||
+          0
         ),
 
         price: Number(
@@ -1016,12 +1186,17 @@ Monto: ${money(total)}
 
       <ComboSuggestion
         open={comboSuggestion.open}
-        burger={comboSuggestion.burger}
-        fries={comboSuggestion.fries}
+        sourceProduct={
+          comboSuggestion.sourceProduct
+        }
+        suggestionType={
+          comboSuggestion.suggestionType
+        }
+        combo={comboSuggestion.combo}
         drink={comboSuggestion.drink}
         onClose={closeComboSuggestion}
-        onAddCombo={
-          handleAddSuggestedCombo
+        onAdd={
+          handleAddSuggestedProduct
         }
       />
 
