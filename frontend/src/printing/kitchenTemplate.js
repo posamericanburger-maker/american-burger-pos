@@ -73,27 +73,55 @@ const formatDate = (value) => {
     value || Date.now()
   )
 
-  if (Number.isNaN(date.getTime())) {
-    return new Date().toLocaleString(
-      'es-CL'
+  if (
+    Number.isNaN(
+      date.getTime()
     )
+  ) {
+    return new Date()
+      .toLocaleString('es-CL')
   }
 
   return date.toLocaleString(
-    'es-CL'
+    'es-CL',
+    {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }
   )
 }
+
+const normalizeItem = (item = {}) => ({
+  quantity: Math.max(
+    1,
+    Number(item.quantity || 1)
+  ),
+
+  name:
+    getItemName(item),
+
+  notes:
+    String(
+      getItemNotes(item)
+    ).trim()
+})
 
 export const buildKitchenTicketHtml = (
   order = {}
 ) => {
   const items =
     getOrderItems(order)
+      .map(normalizeItem)
 
   const customerName =
-    order.customer_name ||
-    order.customer?.name ||
-    ''
+    String(
+      order.customer_name ||
+      order.customer?.name ||
+      ''
+    ).trim()
 
   const generalNotes =
     String(
@@ -117,39 +145,28 @@ export const buildKitchenTicketHtml = (
 
   const productLines = items
     .map((item) => {
-      const quantity = Math.max(
-        1,
-        Number(
-          item.quantity || 1
-        )
-      )
-
-      const itemName =
-        getItemName(item)
-
-      const itemNotes =
-        String(
-          getItemNotes(item)
-        ).trim()
-
       return `
         <section class="product-item">
           <div class="product-main">
             <div class="product-quantity">
-              ${quantity} x
+              ${item.quantity}x
             </div>
 
             <div class="product-name">
-              ${escapeHtml(itemName)}
+              ${escapeHtml(
+                String(
+                  item.name
+                ).toUpperCase()
+              )}
             </div>
           </div>
 
           ${
-            itemNotes
+            item.notes
               ? `
                 <div class="product-note">
                   ${escapeHtml(
-                    itemNotes
+                    item.notes.toUpperCase()
                   )}
                 </div>
               `
@@ -195,15 +212,22 @@ export const buildKitchenTicketHtml = (
           }
 
           body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            -webkit-print-color-adjust:
+              exact;
+
+            print-color-adjust:
+              exact;
           }
 
           .ticket {
             width: 72mm;
             max-width: 72mm;
             margin: 0 auto;
-            padding: 3mm 2mm 5mm;
+            padding:
+              1.5mm
+              1.5mm
+              3mm;
+
             overflow: hidden;
           }
 
@@ -211,75 +235,100 @@ export const buildKitchenTicketHtml = (
             text-align: center;
           }
 
-          .title {
-            margin: 0;
-            font-size: 24px;
-            font-weight: 900;
-            line-height: 1;
+          .header-row {
+            display: flex;
+            align-items: center;
+            justify-content:
+              space-between;
+            gap: 2mm;
           }
 
-          .subtitle {
-            margin-top: 3px;
-            font-size: 14px;
+          .title {
+            margin: 0;
+            font-size: 16px;
             font-weight: 900;
+            line-height: 1;
           }
 
           .order-number {
-            margin-top: 5px;
-            font-size: 24px;
+            font-size: 18px;
             font-weight: 900;
             line-height: 1;
+            white-space: nowrap;
+          }
+
+          .order-info {
+            display: flex;
+            align-items: center;
+            justify-content:
+              space-between;
+            gap: 2mm;
+            margin-top: 3px;
           }
 
           .order-type {
             display: inline-block;
-            margin-top: 5px;
-            padding: 3px 9px;
-            border: 2px solid #000000;
-            font-size: 13px;
+            padding: 2px 6px;
+            border: 1.5px solid
+              #000000;
+            font-size: 10px;
             font-weight: 900;
+            line-height: 1.1;
           }
 
           .date {
-            margin-top: 6px;
-            font-size: 11px;
+            font-size: 9px;
             font-weight: 700;
+            text-align: right;
+            white-space: nowrap;
           }
 
           .line {
             width: 100%;
-            margin: 8px 0;
-            border-top: 2px dashed #000000;
+            margin: 4px 0;
+            border-top:
+              1.5px dashed
+              #000000;
+          }
+
+          .customer {
+            display: grid;
+            grid-template-columns:
+              15mm minmax(0, 1fr);
+            gap: 2mm;
+            align-items: start;
           }
 
           .customer-title {
-            margin-bottom: 2px;
-            font-size: 13px;
+            font-size: 10px;
             font-weight: 900;
-            text-align: center;
           }
 
           .customer-name {
-            font-size: 20px;
+            min-width: 0;
+            font-size: 13px;
             font-weight: 900;
-            line-height: 1.15;
-            text-align: center;
+            line-height: 1.1;
+            text-align: right;
             text-transform: uppercase;
             overflow-wrap: anywhere;
           }
 
           .products-title {
-            margin: 0 0 4px;
-            font-size: 13px;
+            margin: 0 0 2px;
+            font-size: 10px;
             font-weight: 900;
             text-align: center;
           }
 
           .product-item {
             width: 100%;
-            padding: 6px 0;
-            border-bottom: 1px dotted #000000;
-            page-break-inside: avoid;
+            padding: 2.5px 0;
+            border-bottom:
+              1px dotted
+              #000000;
+            page-break-inside:
+              avoid;
           }
 
           .product-item:last-child {
@@ -289,59 +338,74 @@ export const buildKitchenTicketHtml = (
           .product-main {
             display: grid;
             grid-template-columns:
-              15mm minmax(0, 1fr);
-            gap: 2mm;
+              9mm minmax(0, 1fr);
+            gap: 1.5mm;
             align-items: start;
           }
 
           .product-quantity {
-            font-size: 20px;
+            font-size: 13px;
             font-weight: 900;
-            line-height: 1.15;
+            line-height: 1.08;
             white-space: nowrap;
           }
 
           .product-name {
             min-width: 0;
-            font-size: 20px;
+            font-size: 13px;
             font-weight: 900;
-            line-height: 1.15;
+            line-height: 1.08;
             overflow-wrap: anywhere;
             word-break: normal;
           }
 
           .product-note {
             margin:
-              4px 0
-              0 17mm;
+              2px 0
+              0 10.5mm;
 
-            padding: 4px 5px;
-            border: 2px solid #000000;
-            font-size: 14px;
+            padding:
+              2px 3px;
+
+            border-left:
+              2px solid
+              #000000;
+
+            font-size: 10px;
             font-weight: 900;
-            line-height: 1.2;
+            line-height: 1.12;
             overflow-wrap: anywhere;
           }
 
-          .notes-title {
-            margin-bottom: 4px;
-            font-size: 14px;
-            font-weight: 900;
-          }
-
           .notes {
-            padding: 5px;
-            border: 2px solid #000000;
-            font-size: 16px;
+            padding: 3px;
+            border:
+              1.5px solid
+              #000000;
+
+            font-size: 11px;
             font-weight: 900;
-            line-height: 1.25;
+            line-height: 1.15;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
           }
 
+          .notes-label {
+            margin-right: 3px;
+            font-size: 9px;
+            font-weight: 900;
+          }
+
           .footer {
-            margin-top: 8px;
-            font-size: 12px;
+            margin-top: 4px;
+            font-size: 9px;
+            font-weight: 900;
+            text-align: center;
+          }
+
+          .empty {
+            padding: 3px 0;
+            font-size: 11px;
             font-weight: 900;
             text-align: center;
           }
@@ -350,59 +414,61 @@ export const buildKitchenTicketHtml = (
 
       <body>
         <main class="ticket">
-          <header class="center">
-            <h1 class="title">
-              COMANDA
-            </h1>
+          <header>
+            <div class="header-row">
+              <h1 class="title">
+                COMANDA COCINA
+              </h1>
 
-            <div class="subtitle">
-              COCINA
+              ${
+                orderNumber
+                  ? `
+                    <div class="order-number">
+                      #${escapeHtml(
+                        orderNumber
+                      )}
+                    </div>
+                  `
+                  : ''
+              }
             </div>
 
-            ${
-              orderNumber
-                ? `
-                  <div class="order-number">
-                    #${escapeHtml(
-                      orderNumber
-                    )}
-                  </div>
-                `
-                : ''
-            }
+            <div class="order-info">
+              <div class="order-type">
+                ${escapeHtml(
+                  orderType
+                )}
+              </div>
 
-            <div class="order-type">
-              ${escapeHtml(
-                orderType
-              )}
-            </div>
-
-            <div class="date">
-              ${escapeHtml(
-                createdAt
-              )}
+              <div class="date">
+                ${escapeHtml(
+                  createdAt
+                )}
+              </div>
             </div>
           </header>
-
-          <div class="line"></div>
 
           ${
             customerName
               ? `
-                <div class="customer-title">
-                  CLIENTE
-                </div>
-
-                <div class="customer-name">
-                  ${escapeHtml(
-                    customerName
-                  )}
-                </div>
-
                 <div class="line"></div>
+
+                <div class="customer">
+                  <div class="customer-title">
+                    CLIENTE
+                  </div>
+
+                  <div class="customer-name">
+                    ${escapeHtml(
+                      customerName
+                    )}
+                  </div>
+                </div>
               `
               : ''
           }
+
+          <div class="line"></div>
 
           <div class="products-title">
             PRODUCTOS
@@ -411,26 +477,30 @@ export const buildKitchenTicketHtml = (
           ${
             productLines ||
             `
-              <div class="center">
+              <div class="empty">
                 SIN PRODUCTOS
               </div>
             `
           }
 
-          <div class="line"></div>
+          ${
+            generalNotes
+              ? `
+                <div class="line"></div>
 
-          <div class="notes-title">
-            NOTAS DEL PEDIDO:
-          </div>
+                <div class="notes">
+                  <span class="notes-label">
+                    NOTAS:
+                  </span>
 
-          <div class="notes">
-            ${escapeHtml(
-              generalNotes ||
-              'SIN NOTAS'
-            )}
-          </div>
-
-          <div class="line"></div>
+                  ${escapeHtml(
+                    generalNotes
+                      .toUpperCase()
+                  )}
+                </div>
+              `
+              : ''
+          }
 
           <div class="footer">
             AMERICAN BURGER
