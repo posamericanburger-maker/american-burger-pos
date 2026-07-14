@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState
+} from 'react'
 
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
@@ -25,7 +30,8 @@ const getProductEmoji = (product = {}) => {
     text.includes('coca') ||
     text.includes('lata') ||
     text.includes('sprite') ||
-    text.includes('fanta')
+    text.includes('fanta') ||
+    text.includes('pepsi')
   ) {
     return '🥤'
   }
@@ -48,10 +54,14 @@ function ProductCard({
 }) {
   const [added, setAdded] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [imageFailed, setImageFailed] = useState(false)
+
   const timeoutRef = useRef(null)
+  const mediaRef = useRef(null)
 
   const productName = product.name || 'Producto'
   const productPrice = Number(product.price || 0)
+  const productEmoji = getProductEmoji(product)
   const isAvailable = product.available !== false
 
   useEffect(() => {
@@ -67,10 +77,24 @@ function ProductCard({
       return
     }
 
+    const sourceRect =
+      mediaRef.current?.getBoundingClientRect?.() || null
+
+    const animationData = {
+      sourceRect,
+      imageUrl:
+        product.image_url && !imageFailed
+          ? product.image_url
+          : '',
+      emoji: productEmoji
+    }
+
     try {
       setAdding(true)
 
-      await Promise.resolve(onAdd(product))
+      await Promise.resolve(
+        onAdd(product, animationData)
+      )
 
       setAdded(true)
 
@@ -80,9 +104,12 @@ function ProductCard({
 
       timeoutRef.current = window.setTimeout(() => {
         setAdded(false)
-      }, 1600)
+      }, 1400)
     } catch (error) {
-      console.error('Error al agregar el producto:', error)
+      console.error(
+        'Error al agregar el producto:',
+        error
+      )
     } finally {
       setAdding(false)
     }
@@ -108,6 +135,7 @@ function ProductCard({
       "
     >
       <div
+        ref={mediaRef}
         className="
           relative
           flex
@@ -175,7 +203,7 @@ function ProductCard({
           {isAvailable ? 'Online' : 'Agotado'}
         </div>
 
-        {product.image_url ? (
+        {product.image_url && !imageFailed ? (
           <img
             src={product.image_url}
             alt={productName}
@@ -189,26 +217,24 @@ function ProductCard({
               duration-500
               group-hover:scale-105
             "
-            onError={(event) => {
-              event.currentTarget.style.display = 'none'
-              event.currentTarget.nextElementSibling?.classList.remove('hidden')
+            onError={() => {
+              setImageFailed(true)
             }}
           />
-        ) : null}
-
-        <div
-          className={`
-            text-[88px]
-            drop-shadow-xl
-            transition-transform
-            duration-500
-            group-hover:scale-110
-            sm:text-[120px]
-            ${product.image_url ? 'hidden' : ''}
-          `}
-        >
-          {getProductEmoji(product)}
-        </div>
+        ) : (
+          <div
+            className="
+              text-[88px]
+              drop-shadow-xl
+              transition-transform
+              duration-500
+              group-hover:scale-110
+              sm:text-[120px]
+            "
+          >
+            {productEmoji}
+          </div>
+        )}
 
         {!isAvailable && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/45">
@@ -221,7 +247,8 @@ function ProductCard({
 
       <div className="flex flex-1 flex-col p-4 sm:p-6">
         <p className="text-[10px] font-black uppercase tracking-widest text-red-600 sm:text-xs">
-          {product.category_name || 'American Burger'}
+          {product.category_name ||
+            'American Burger'}
         </p>
 
         <h3
@@ -250,7 +277,8 @@ function ProductCard({
             sm:min-h-[44px]
           "
         >
-          {product.description || 'Producto American Burger.'}
+          {product.description ||
+            'Producto American Burger.'}
         </p>
 
         <div className="mt-3 flex items-center gap-1 text-yellow-500 sm:mt-5">
@@ -315,4 +343,4 @@ function ProductCard({
   )
 }
 
-export default ProductCard
+export default memo(ProductCard)
