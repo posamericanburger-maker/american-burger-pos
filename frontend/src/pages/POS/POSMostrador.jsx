@@ -5,12 +5,28 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   'https://american-burger-pos-api-d8r1.onrender.com/api'
 
+const BUSINESS = {
+  name: 'AMERICAN BURGER',
+  city: 'ARICA - CHILE',
+  address: 'Av. Santa María 2248, Arica',
+  phone: '+56 9 3080 9265',
+  instagram: '@americanburgerarica'
+}
+
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: 'CLP',
     maximumFractionDigits: 0
   }).format(Number(value || 0))
+
+const escapeHtml = (value = '') =>
+  String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
 
 const getToken = () =>
   localStorage.getItem('token') ||
@@ -155,34 +171,851 @@ const categoryOrderIndex = (name = '') => {
   return index === -1 ? 999 : index
 }
 
+const formatDateParts = (value) => {
+  const date = new Date(value || Date.now())
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      date: '-',
+      time: '-'
+    }
+  }
+
+  return {
+    date: date.toLocaleDateString('es-CL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }),
+
+    time: date.toLocaleTimeString('es-CL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+}
+
+const getPaymentMethodText = (paymentMethod = '') =>
+  ({
+    cash: 'EFECTIVO',
+    debit: 'DÉBITO',
+    credit: 'CRÉDITO',
+    transfer: 'TRANSFERENCIA',
+    pending: 'PENDIENTE'
+  }[paymentMethod] ||
+    String(paymentMethod || '').toUpperCase())
+
+const getOrderTypeText = (orderType = '') =>
+  ({
+    counter: 'MOSTRADOR',
+    delivery: 'DELIVERY',
+    pickup: 'RETIRO',
+    table: 'MESA'
+  }[orderType] ||
+    String(orderType || 'MOSTRADOR').toUpperCase())
+
+const buildBaseTicketHtml = ({
+  title,
+  content,
+  paperWidth = 80
+}) => {
+  const printableWidth =
+    Number(paperWidth) === 58 ? 50 : 70
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+
+        <title>${escapeHtml(title)}</title>
+
+        <style>
+          @page {
+            size: ${paperWidth}mm auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          html,
+          body {
+            margin: 0;
+            padding: 0;
+            width: ${paperWidth}mm;
+            min-width: ${paperWidth}mm;
+            background: #ffffff;
+            color: #000000;
+            font-family: Arial, Helvetica, sans-serif;
+          }
+
+          body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          .ticket {
+            width: ${printableWidth}mm;
+            max-width: ${printableWidth}mm;
+            margin: 0 auto;
+            padding: 3mm 1mm 7mm;
+            overflow: hidden;
+            font-size: 12px;
+            line-height: 1.28;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .right {
+            text-align: right;
+          }
+
+          .bold {
+            font-weight: 900;
+          }
+
+          .brand {
+            margin: 0;
+            font-size: 23px;
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: 0.4px;
+          }
+
+          .ticket-title {
+            margin-top: 3px;
+            font-size: 17px;
+            font-weight: 900;
+            line-height: 1.1;
+          }
+
+          .order-number {
+            margin-top: 5px;
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1;
+          }
+
+          .order-channel {
+            display: inline-block;
+            margin-top: 5px;
+            padding: 3px 9px;
+            border: 2px solid #000000;
+            font-size: 13px;
+            font-weight: 900;
+          }
+
+          .separator {
+            width: 100%;
+            margin: 8px 0;
+            border-top: 2px dashed #000000;
+          }
+
+          .separator-solid {
+            width: 100%;
+            margin: 8px 0;
+            border-top: 2px solid #000000;
+          }
+
+          .meta {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+
+          .meta td {
+            padding: 2px 0;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+          }
+
+          .meta-label {
+            width: 27%;
+            font-weight: 900;
+          }
+
+          .meta-value {
+            width: 73%;
+            text-align: right;
+            font-weight: 900;
+          }
+
+          .section-title {
+            margin: 4px 0 6px;
+            font-size: 14px;
+            font-weight: 900;
+            text-align: center;
+          }
+
+          .item {
+            width: 100%;
+            margin: 0;
+            padding: 7px 0;
+            border-bottom: 1px dotted #000000;
+            page-break-inside: avoid;
+          }
+
+          .item:last-child {
+            border-bottom: none;
+          }
+
+          .item-line {
+            display: grid;
+            grid-template-columns: 11mm minmax(0, 1fr);
+            gap: 3mm;
+            align-items: start;
+          }
+
+          .item-line.customer {
+            grid-template-columns:
+              11mm minmax(0, 1fr) 21mm;
+          }
+
+          .quantity {
+            font-size: 20px;
+            font-weight: 900;
+            line-height: 1.1;
+            white-space: nowrap;
+          }
+
+          .item-name {
+            min-width: 0;
+            font-size: 17px;
+            font-weight: 900;
+            line-height: 1.16;
+            overflow-wrap: anywhere;
+            word-break: normal;
+          }
+
+          .item-price {
+            font-size: 14px;
+            font-weight: 900;
+            text-align: right;
+            white-space: nowrap;
+          }
+
+          .unit-price {
+            margin-top: 3px;
+            color: #222222;
+            font-size: 11px;
+            font-weight: 700;
+          }
+
+          .item-note {
+            margin: 5px 0 0 14mm;
+            padding: 4px 5px;
+            border: 1px solid #000000;
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+          }
+
+          .general-notes {
+            margin-top: 7px;
+            padding: 7px;
+            border: 3px solid #000000;
+            font-size: 15px;
+            font-weight: 900;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+          }
+
+          .general-notes-title {
+            display: block;
+            margin-bottom: 3px;
+            font-size: 12px;
+          }
+
+          .summary {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+
+          .summary td {
+            padding: 3px 0;
+            overflow-wrap: anywhere;
+          }
+
+          .summary-label {
+            width: 55%;
+            font-weight: 900;
+          }
+
+          .summary-value {
+            width: 45%;
+            text-align: right;
+            font-weight: 900;
+            white-space: nowrap;
+          }
+
+          .total-row td {
+            padding-top: 6px;
+            border-top: 2px solid #000000;
+            font-size: 20px;
+            font-weight: 900;
+          }
+
+          .prepare {
+            margin-top: 7px;
+            padding: 8px 4px;
+            border: 3px solid #000000;
+            font-size: 19px;
+            font-weight: 900;
+            text-align: center;
+          }
+
+          .footer {
+            margin-top: 9px;
+            font-size: 10px;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.35;
+          }
+        </style>
+      </head>
+
+      <body>
+        <main class="ticket">
+          ${content}
+        </main>
+      </body>
+    </html>
+  `
+}
+
+const buildKitchenTicketHtml = (order = {}) => {
+  const { date, time } = formatDateParts(
+    order.created_at ||
+      order.createdAt ||
+      Date.now()
+  )
+
+  const items = Array.isArray(order.items)
+    ? order.items
+    : []
+
+  const orderNumber =
+    order.order_number ||
+    order.number ||
+    order.id ||
+    '-'
+
+  const orderType =
+    getOrderTypeText(
+      order.order_type ||
+        order.type ||
+        'counter'
+    )
+
+  const customerName =
+    order.customer_name ||
+    order.customer?.name ||
+    ''
+
+  const notes =
+    String(order.notes || '').trim()
+
+  const productLines = items
+    .map((item) => {
+      const quantity = Number(
+        item.quantity || 1
+      )
+
+      const name =
+        item.name ||
+        item.product_name ||
+        item.name_snapshot ||
+        'Producto'
+
+      const itemNotes =
+        item.notes ||
+        item.observations ||
+        item.comment ||
+        ''
+
+      return `
+        <section class="item">
+          <div class="item-line">
+            <div class="quantity">
+              ${quantity}x
+            </div>
+
+            <div class="item-name">
+              ${escapeHtml(
+                String(name).toUpperCase()
+              )}
+            </div>
+          </div>
+
+          ${
+            String(itemNotes).trim()
+              ? `
+                <div class="item-note">
+                  MODIFICACIÓN:
+                  ${escapeHtml(
+                    String(itemNotes).toUpperCase()
+                  )}
+                </div>
+              `
+              : ''
+          }
+        </section>
+      `
+    })
+    .join('')
+
+  const content = `
+    <header class="center">
+      <h1 class="brand">
+        ${escapeHtml(BUSINESS.name)}
+      </h1>
+
+      <div class="ticket-title">
+        COMANDA DE COCINA
+      </div>
+
+      <div class="order-number">
+        #${escapeHtml(orderNumber)}
+      </div>
+
+      <div class="order-channel">
+        ${escapeHtml(orderType)}
+      </div>
+    </header>
+
+    <div class="separator"></div>
+
+    <table class="meta">
+      <tbody>
+        <tr>
+          <td class="meta-label">
+            FECHA
+          </td>
+
+          <td class="meta-value">
+            ${escapeHtml(date)}
+          </td>
+        </tr>
+
+        <tr>
+          <td class="meta-label">
+            HORA
+          </td>
+
+          <td class="meta-value">
+            ${escapeHtml(time)}
+          </td>
+        </tr>
+
+        ${
+          customerName
+            ? `
+              <tr>
+                <td class="meta-label">
+                  CLIENTE
+                </td>
+
+                <td class="meta-value">
+                  ${escapeHtml(
+                    String(
+                      customerName
+                    ).toUpperCase()
+                  )}
+                </td>
+              </tr>
+            `
+            : ''
+        }
+      </tbody>
+    </table>
+
+    <div class="separator-solid"></div>
+
+    <div class="section-title">
+      PRODUCTOS DEL PEDIDO
+    </div>
+
+    ${
+      productLines ||
+      `
+        <div class="center bold">
+          SIN PRODUCTOS
+        </div>
+      `
+    }
+
+    <div class="separator-solid"></div>
+
+    <div class="general-notes">
+      <span class="general-notes-title">
+        OBSERVACIONES DEL PEDIDO
+      </span>
+
+      ${escapeHtml(
+        notes
+          ? notes.toUpperCase()
+          : 'SIN OBSERVACIONES'
+      )}
+    </div>
+
+    <div class="prepare">
+      PREPARAR PEDIDO
+    </div>
+
+    <div class="footer">
+      ${escapeHtml(BUSINESS.name)}
+      · COMANDA INTERNA
+    </div>
+  `
+
+  return buildBaseTicketHtml({
+    title: `Comanda #${orderNumber}`,
+    content,
+    paperWidth: 80
+  })
+}
+
+const buildCustomerReceiptHtml = (order = {}) => {
+  const { date, time } = formatDateParts(
+    order.created_at ||
+      order.createdAt ||
+      Date.now()
+  )
+
+  const items = Array.isArray(order.items)
+    ? order.items
+    : []
+
+  const orderNumber =
+    order.order_number ||
+    order.number ||
+    order.id ||
+    '-'
+
+  const orderType =
+    getOrderTypeText(
+      order.order_type ||
+        order.type ||
+        'counter'
+    )
+
+  const paymentMethod =
+    getPaymentMethodText(
+      order.payment_method
+    )
+
+  const customerName =
+    order.customer_name ||
+    order.customer?.name ||
+    ''
+
+  const productLines = items
+    .map((item) => {
+      const quantity = Number(
+        item.quantity || 1
+      )
+
+      const name =
+        item.name ||
+        item.product_name ||
+        item.name_snapshot ||
+        'Producto'
+
+      const unitPrice = Number(
+        item.unit_price ||
+        item.price ||
+        0
+      )
+
+      const lineTotal = Number(
+        item.subtotal ||
+        quantity * unitPrice
+      )
+
+      return `
+        <section class="item">
+          <div class="item-line customer">
+            <div class="quantity">
+              ${quantity}x
+            </div>
+
+            <div class="item-name">
+              ${escapeHtml(
+                String(name).toUpperCase()
+              )}
+
+              <div class="unit-price">
+                ${escapeHtml(
+                  money(unitPrice)
+                )} C/U
+              </div>
+            </div>
+
+            <div class="item-price">
+              ${escapeHtml(
+                money(lineTotal)
+              )}
+            </div>
+          </div>
+        </section>
+      `
+    })
+    .join('')
+
+  const subtotal = Number(
+    order.subtotal ||
+    order.total ||
+    0
+  )
+
+  const deliveryFee = Number(
+    order.delivery_fee ||
+    order.deliveryFee ||
+    0
+  )
+
+  const discount = Number(
+    order.discount ||
+    order.discount_amount ||
+    0
+  )
+
+  const total = Number(
+    order.total ||
+    order.total_amount ||
+    subtotal +
+      deliveryFee -
+      discount
+  )
+
+  const content = `
+    <header class="center">
+      <h1 class="brand">
+        ${escapeHtml(BUSINESS.name)}
+      </h1>
+
+      <div class="ticket-title">
+        COMPROBANTE DE PEDIDO
+      </div>
+
+      <div class="order-number">
+        #${escapeHtml(orderNumber)}
+      </div>
+
+      <div class="order-channel">
+        ${escapeHtml(orderType)}
+      </div>
+    </header>
+
+    <div class="separator"></div>
+
+    <table class="meta">
+      <tbody>
+        <tr>
+          <td class="meta-label">
+            FECHA
+          </td>
+
+          <td class="meta-value">
+            ${escapeHtml(date)}
+          </td>
+        </tr>
+
+        <tr>
+          <td class="meta-label">
+            HORA
+          </td>
+
+          <td class="meta-value">
+            ${escapeHtml(time)}
+          </td>
+        </tr>
+
+        <tr>
+          <td class="meta-label">
+            PAGO
+          </td>
+
+          <td class="meta-value">
+            ${escapeHtml(paymentMethod)}
+          </td>
+        </tr>
+
+        ${
+          customerName
+            ? `
+              <tr>
+                <td class="meta-label">
+                  CLIENTE
+                </td>
+
+                <td class="meta-value">
+                  ${escapeHtml(
+                    String(
+                      customerName
+                    ).toUpperCase()
+                  )}
+                </td>
+              </tr>
+            `
+            : ''
+        }
+      </tbody>
+    </table>
+
+    <div class="separator-solid"></div>
+
+    <div class="section-title">
+      DETALLE DEL PEDIDO
+    </div>
+
+    ${
+      productLines ||
+      `
+        <div class="center bold">
+          SIN PRODUCTOS
+        </div>
+      `
+    }
+
+    <div class="separator-solid"></div>
+
+    <table class="summary">
+      <tbody>
+        <tr>
+          <td class="summary-label">
+            SUBTOTAL
+          </td>
+
+          <td class="summary-value">
+            ${escapeHtml(
+              money(subtotal)
+            )}
+          </td>
+        </tr>
+
+        ${
+          deliveryFee > 0
+            ? `
+              <tr>
+                <td class="summary-label">
+                  DELIVERY
+                </td>
+
+                <td class="summary-value">
+                  ${escapeHtml(
+                    money(deliveryFee)
+                  )}
+                </td>
+              </tr>
+            `
+            : ''
+        }
+
+        ${
+          discount > 0
+            ? `
+              <tr>
+                <td class="summary-label">
+                  DESCUENTO
+                </td>
+
+                <td class="summary-value">
+                  -${escapeHtml(
+                    money(discount)
+                  )}
+                </td>
+              </tr>
+            `
+            : ''
+        }
+
+        <tr class="total-row">
+          <td class="summary-label">
+            TOTAL
+          </td>
+
+          <td class="summary-value">
+            ${escapeHtml(
+              money(total)
+            )}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      PRECIOS CON IVA INCLUIDO
+      <br />
+
+      GRACIAS POR TU COMPRA
+      <br />
+
+      ${escapeHtml(BUSINESS.name)}
+      · ${escapeHtml(BUSINESS.city)}
+      <br />
+
+      ${escapeHtml(BUSINESS.instagram)}
+    </div>
+  `
+
+  return buildBaseTicketHtml({
+    title: `Comprobante #${orderNumber}`,
+    content,
+    paperWidth: 80
+  })
+}
+
 const POSMostrador = () => {
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
   const [categories, setCategories] = useState([])
   const [cart, setCart] = useState([])
   const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] =
-    useState('all')
-  const [paymentMethod, setPaymentMethod] =
-    useState('cash')
+  const [
+    selectedCategory,
+    setSelectedCategory
+  ] = useState('all')
+  const [
+    paymentMethod,
+    setPaymentMethod
+  ] = useState('cash')
   const [notes, setNotes] = useState('')
-  const [customerName, setCustomerName] =
+  const [
+    customerName,
+    setCustomerName
+  ] = useState('')
+  const [loading, setLoading] =
+    useState(true)
+  const [saving, setSaving] =
+    useState(false)
+  const [printing, setPrinting] =
+    useState(false)
+  const [error, setError] =
     useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [printing, setPrinting] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
-  const [cashOpen, setCashOpen] = useState(false)
+  const [message, setMessage] =
+    useState('')
+  const [cashOpen, setCashOpen] =
+    useState(false)
 
   const headers = useMemo(() => {
     const token = getToken()
 
     return {
-      'Content-Type': 'application/json',
+      'Content-Type':
+        'application/json',
+
       ...(token
         ? {
-            Authorization: `Bearer ${token}`
+            Authorization:
+              `Bearer ${token}`
           }
         : {})
     }
@@ -204,7 +1037,8 @@ const POSMostrador = () => {
       }
     )
 
-    const text = await response.text()
+    const text =
+      await response.text()
 
     let data = null
 
@@ -221,53 +1055,58 @@ const POSMostrador = () => {
     if (!response.ok) {
       throw new Error(
         data?.message ||
-          data?.error ||
-          'Error de conexión'
+        data?.error ||
+        'Error de conexión'
       )
     }
 
     return data
   }
 
-  const checkCashStatus = async () => {
-    try {
-      const data = await request(
-        '/cash/sessions'
-      )
-
-      const sessions = getList(
-        data,
-        [
-          'sessions',
-          'cash_sessions'
-        ]
-      )
-
-      const activeSession =
-        sessions.find((session) => {
-          const status = String(
-            session.status || ''
-          ).toLowerCase()
-
-          return (
-            status === 'open' ||
-            status === 'abierta' ||
-            (!session.closed_at &&
-              !session.closedAt)
+  const checkCashStatus =
+    async () => {
+      try {
+        const data =
+          await request(
+            '/cash/sessions'
           )
-        })
 
-      const isOpen =
-        Boolean(activeSession)
+        const sessions =
+          getList(data, [
+            'sessions',
+            'cash_sessions'
+          ])
 
-      setCashOpen(isOpen)
+        const activeSession =
+          sessions.find(
+            (session) => {
+              const status =
+                String(
+                  session.status ||
+                    ''
+                ).toLowerCase()
 
-      return isOpen
-    } catch {
-      setCashOpen(false)
-      return false
+              return (
+                status === 'open' ||
+                status ===
+                  'abierta' ||
+                (!session.closed_at &&
+                  !session.closedAt)
+              )
+            }
+          )
+
+        const isOpen =
+          Boolean(activeSession)
+
+        setCashOpen(isOpen)
+
+        return isOpen
+      } catch {
+        setCashOpen(false)
+        return false
+      }
     }
-  }
 
   const loadData = async () => {
     try {
@@ -278,11 +1117,12 @@ const POSMostrador = () => {
         productsData,
         categoriesData,
         ordersData
-      ] = await Promise.allSettled([
-        request('/products'),
-        request('/categories'),
-        request('/orders')
-      ])
+      ] =
+        await Promise.allSettled([
+          request('/products'),
+          request('/categories'),
+          request('/orders')
+        ])
 
       if (
         productsData.status ===
@@ -296,7 +1136,8 @@ const POSMostrador = () => {
         setProducts(
           list.filter(
             (product) =>
-              product.active !== false
+              product.active !==
+              false
           )
         )
       }
@@ -313,7 +1154,8 @@ const POSMostrador = () => {
         setCategories(
           list.filter(
             (category) =>
-              category.active !== false
+              category.active !==
+              false
           )
         )
       }
@@ -334,7 +1176,7 @@ const POSMostrador = () => {
     } catch (err) {
       setError(
         err.message ||
-          'No se pudieron cargar datos del POS'
+        'No se pudieron cargar datos del POS'
       )
     } finally {
       setLoading(false)
@@ -350,10 +1192,14 @@ const POSMostrador = () => {
       return [...categories].sort(
         (a, b) => {
           const orderA =
-            categoryOrderIndex(a.name)
+            categoryOrderIndex(
+              a.name
+            )
 
           const orderB =
-            categoryOrderIndex(b.name)
+            categoryOrderIndex(
+              b.name
+            )
 
           if (orderA !== orderB) {
             return orderA - orderB
@@ -419,24 +1265,31 @@ const POSMostrador = () => {
       })
     })
 
-    return Object.entries(salesMap)
-      .map(([name, quantity]) => {
-        const product =
-          products.find(
-            (item) =>
-              item.name === name
-          )
+    return Object.entries(
+      salesMap
+    )
+      .map(
+        ([name, quantity]) => {
+          const product =
+            products.find(
+              (item) =>
+                item.name === name
+            )
 
-        return {
-          name,
-          quantity,
-          product
+          return {
+            name,
+            quantity,
+            product
+          }
         }
-      })
-      .filter((item) => item.product)
+      )
+      .filter(
+        (item) => item.product
+      )
       .sort(
         (a, b) =>
-          b.quantity - a.quantity
+          b.quantity -
+          a.quantity
       )
       .slice(0, 5)
   }, [orders, products])
@@ -447,7 +1300,8 @@ const POSMostrador = () => {
         `${
           product.name || ''
         } ${
-          product.description || ''
+          product.description ||
+          ''
         }`.toLowerCase()
 
       const matchesSearch =
@@ -456,10 +1310,13 @@ const POSMostrador = () => {
         )
 
       const categoryName =
-        productCategoryName(product)
+        productCategoryName(
+          product
+        )
 
       const matchesCategory =
-        selectedCategory === 'all' ||
+        selectedCategory ===
+          'all' ||
         product.category_id ===
           selectedCategory ||
         categoryName ===
@@ -479,14 +1336,16 @@ const POSMostrador = () => {
       )
 
       if (exists) {
-        return current.map((item) =>
-          item.id === product.id
-            ? {
-                ...item,
-                quantity:
-                  item.quantity + 1
-              }
-            : item
+        return current.map(
+          (item) =>
+            item.id === product.id
+              ? {
+                  ...item,
+                  quantity:
+                    item.quantity +
+                    1
+                }
+              : item
         )
       }
 
@@ -495,15 +1354,20 @@ const POSMostrador = () => {
         {
           id: product.id,
           name: product.name,
+
           price: Number(
             product.price || 0
           ),
+
           quantity: 1,
+
           category_name:
             productCategoryName(
               product
             ),
-          icon: productIcon(product)
+
+          icon:
+            productIcon(product)
         }
       ]
     })
@@ -543,7 +1407,8 @@ const POSMostrador = () => {
   const removeItem = (id) => {
     setCart((current) =>
       current.filter(
-        (item) => item.id !== id
+        (item) =>
+          item.id !== id
       )
     )
   }
@@ -558,51 +1423,70 @@ const POSMostrador = () => {
   const total = cart.reduce(
     (sum, item) =>
       sum +
-      Number(item.price || 0) *
+      Number(
+        item.price || 0
+      ) *
         Number(
           item.quantity || 0
         ),
+
     0
   )
-
-  const paymentMethodText =
-    {
-      cash: 'EFECTIVO',
-      debit: 'DÉBITO',
-      credit: 'CRÉDITO',
-      transfer: 'TRANSFERENCIA'
-    }[paymentMethod] ||
-    paymentMethod.toUpperCase()
 
   const buildOrderItems = (
     sourceCart = cart
   ) =>
     sourceCart.map((item) => ({
-      product_id: item.id,
-      name: item.name,
-      product_name: item.name,
+      product_id:
+        item.product_id ||
+        item.id,
 
-      quantity: Number(
-        item.quantity || 1
-      ),
+      id:
+        item.id,
 
-      unit_price: Number(
-        item.price || 0
-      ),
+      name:
+        item.name,
 
-      price: Number(
-        item.price || 0
-      ),
+      product_name:
+        item.product_name ||
+        item.name,
 
-      subtotal:
-        Number(item.price || 0) *
+      quantity:
         Number(
           item.quantity || 1
         ),
 
+      unit_price:
+        Number(
+          item.unit_price ||
+          item.price ||
+          0
+        ),
+
+      price:
+        Number(
+          item.price || 0
+        ),
+
+      subtotal:
+        Number(
+          item.subtotal ||
+          Number(
+            item.price || 0
+          ) *
+            Number(
+              item.quantity || 1
+            )
+        ),
+
       category_name:
         item.category_name ||
-        'Sin categoría'
+        'Sin categoría',
+
+      notes:
+        item.notes ||
+        item.observations ||
+        ''
     }))
 
   const buildPrintableOrder = ({
@@ -626,7 +1510,8 @@ const POSMostrador = () => {
       id: orderId,
 
       order_number:
-        savedOrder?.order_number ||
+        savedOrder
+          ?.order_number ||
         savedOrder?.number ||
         savedOrder?.code ||
         orderId ||
@@ -640,24 +1525,24 @@ const POSMostrador = () => {
         sourcePaymentMethod,
 
       payment_method_text:
-        {
-          cash: 'EFECTIVO',
-          debit: 'DÉBITO',
-          credit: 'CRÉDITO',
-          transfer: 'TRANSFERENCIA'
-        }[sourcePaymentMethod] ||
-        String(
-          sourcePaymentMethod || ''
-        ).toUpperCase(),
+        getPaymentMethodText(
+          sourcePaymentMethod
+        ),
 
       subtotal:
-        Number(sourceTotal || 0),
+        Number(
+          sourceTotal || 0
+        ),
 
       total:
-        Number(sourceTotal || 0),
+        Number(
+          sourceTotal || 0
+        ),
 
       total_amount:
-        Number(sourceTotal || 0),
+        Number(
+          sourceTotal || 0
+        ),
 
       customer_name:
         sourceCustomerName.trim() ||
@@ -666,6 +1551,7 @@ const POSMostrador = () => {
       customer: {
         name:
           sourceCustomerName.trim(),
+
         phone: '',
         address: '',
         reference: ''
@@ -680,9 +1566,12 @@ const POSMostrador = () => {
         ),
 
       created_at:
-        savedOrder?.created_at ||
-        savedOrder?.createdAt ||
-        new Date().toISOString()
+        savedOrder
+          ?.created_at ||
+        savedOrder
+          ?.createdAt ||
+        new Date()
+          .toISOString()
     }
   }
 
@@ -711,6 +1600,15 @@ const POSMostrador = () => {
             .join(':')
         : null
 
+    const html =
+      purpose === 'kitchen'
+        ? buildKitchenTicketHtml(
+            order
+          )
+        : buildCustomerReceiptHtml(
+            order
+          )
+
     return request(
       '/printing/jobs',
       {
@@ -726,16 +1624,29 @@ const POSMostrador = () => {
             referenceValue,
 
           title,
-
           priority,
-
           max_attempts: 3,
 
           idempotency_key:
             idempotencyKey,
 
           payload: {
-            order
+            template:
+              purpose ===
+              'kitchen'
+                ? 'kitchen_order'
+                : 'customer_receipt',
+
+            html,
+
+            business: BUSINESS,
+
+            order,
+
+            print_settings: {
+              paper_width: 80,
+              copies: 1
+            }
           }
         })
       }
@@ -761,9 +1672,7 @@ const POSMostrador = () => {
               `Comanda cocina${orderLabel}`,
 
             order,
-
             referenceId,
-
             priority: 100,
 
             idempotencySuffix:
@@ -778,9 +1687,7 @@ const POSMostrador = () => {
               `Recibo cliente${orderLabel}`,
 
             order,
-
             referenceId,
-
             priority: 60,
 
             idempotencySuffix:
@@ -802,18 +1709,22 @@ const POSMostrador = () => {
             'rejected'
         )
 
-      failed.forEach((result) => {
-        console.error(
-          'Error enviando trabajo de impresión:',
-          result.reason
-        )
-      })
+      failed.forEach(
+        (result) => {
+          console.error(
+            'Error enviando trabajo de impresión:',
+            result.reason
+          )
+        }
+      )
 
       return {
         successful:
           successful.length,
+
         failed:
           failed.length,
+
         results
       }
     }
@@ -880,6 +1791,7 @@ const POSMostrador = () => {
         customer: {
           name:
             customerSnapshot.trim(),
+
           phone: '',
           address: '',
           reference: ''
@@ -903,6 +1815,7 @@ const POSMostrador = () => {
           '/orders',
           {
             method: 'POST',
+
             body:
               JSON.stringify(
                 payload
@@ -924,14 +1837,19 @@ const POSMostrador = () => {
       const printableOrder =
         buildPrintableOrder({
           savedOrder,
+
           sourceCart:
             cartSnapshot,
+
           sourceTotal:
             totalSnapshot,
+
           sourceCustomerName:
             customerSnapshot,
+
           sourceNotes:
             notesSnapshot,
+
           sourcePaymentMethod:
             paymentSnapshot
         })
@@ -940,6 +1858,7 @@ const POSMostrador = () => {
         await sendAutomaticPrintJobs({
           order:
             printableOrder,
+
           referenceId:
             orderId
         })
@@ -968,7 +1887,7 @@ const POSMostrador = () => {
     } catch (err) {
       setError(
         err.message ||
-          'No se pudo registrar la venta'
+        'No se pudo registrar la venta'
       )
     } finally {
       setSaving(false)
@@ -1005,7 +1924,6 @@ const POSMostrador = () => {
           printableOrder,
 
         referenceId: null,
-
         priority: 60
       })
 
@@ -1015,7 +1933,7 @@ const POSMostrador = () => {
     } catch (err) {
       setError(
         err.message ||
-          'No se pudo enviar el recibo al Print Agent'
+        'No se pudo enviar el recibo al Print Agent'
       )
     } finally {
       setPrinting(false)
@@ -1059,8 +1977,7 @@ const POSMostrador = () => {
                   </h2>
 
                   <p className="text-gray-600">
-                    Toca un producto para
-                    agregarlo al pedido.
+                    Toca un producto para agregarlo al pedido.
                   </p>
                 </div>
 
@@ -1176,8 +2093,7 @@ const POSMostrador = () => {
               ) : filteredProducts.length ===
                 0 ? (
                 <div className="text-center py-10 text-gray-500">
-                  No hay productos
-                  disponibles.
+                  No hay productos disponibles.
                 </div>
               ) : (
                 <div>
