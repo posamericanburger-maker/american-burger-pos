@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import Layout from '../../components/Layout'
-import {
-  printManualReceipt,
-  printOrderDocuments
-} from '../../printing'
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -26,9 +22,7 @@ const getList = (data, keys = []) => {
   if (Array.isArray(data)) return data
 
   for (const key of keys) {
-    if (Array.isArray(data?.[key])) {
-      return data[key]
-    }
+    if (Array.isArray(data?.[key])) return data[key]
   }
 
   if (Array.isArray(data?.data)) return data.data
@@ -93,9 +87,9 @@ const categoryLabel = (name = '') => {
 
 const productIcon = (product = {}) => {
   const text = normalizeText(
-    `${product.name || ''} ${
-      product.category_name || ''
-    } ${product.category?.name || ''}`
+    `${product.name || ''} ${product.category_name || ''} ${
+      product.category?.name || ''
+    }`
   )
 
   if (
@@ -159,15 +153,36 @@ const categoryOrderIndex = (name = '') => {
   return index === -1 ? 999 : index
 }
 
-const getPaymentMethodText = (paymentMethod = '') =>
-  ({
-    cash: 'EFECTIVO',
-    debit: 'DÉBITO',
-    credit: 'CRÉDITO',
-    transfer: 'TRANSFERENCIA',
-    pending: 'PENDIENTE'
-  }[paymentMethod] ||
-    String(paymentMethod || '').toUpperCase())
+const printHtmlHidden = (html, delay = 500) => {
+  const iframe = document.createElement('iframe')
+
+  iframe.style.position = 'fixed'
+  iframe.style.right = '0'
+  iframe.style.bottom = '0'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+  iframe.style.opacity = '0'
+
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentWindow.document
+
+  doc.open()
+  doc.write(html)
+  doc.close()
+
+  setTimeout(() => {
+    iframe.contentWindow.focus()
+    iframe.contentWindow.print()
+
+    setTimeout(() => {
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe)
+      }
+    }, 1200)
+  }, delay)
+}
 
 const POSMostrador = () => {
   const [products, setProducts] = useState([])
@@ -175,66 +190,40 @@ const POSMostrador = () => {
   const [categories, setCategories] = useState([])
   const [cart, setCart] = useState([])
   const [search, setSearch] = useState('')
-  const [
-    selectedCategory,
-    setSelectedCategory
-  ] = useState('all')
-  const [
-    paymentMethod,
-    setPaymentMethod
-  ] = useState('cash')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
   const [notes, setNotes] = useState('')
-  const [
-    customerName,
-    setCustomerName
-  ] = useState('')
-  const [loading, setLoading] =
-    useState(true)
-  const [saving, setSaving] =
-    useState(false)
-  const [printing, setPrinting] =
-    useState(false)
-  const [error, setError] =
-    useState('')
-  const [message, setMessage] =
-    useState('')
-  const [cashOpen, setCashOpen] =
-    useState(false)
+  const [customerName, setCustomerName] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [cashOpen, setCashOpen] = useState(false)
 
   const headers = useMemo(() => {
     const token = getToken()
 
     return {
-      'Content-Type':
-        'application/json',
-
+      'Content-Type': 'application/json',
       ...(token
         ? {
-            Authorization:
-              `Bearer ${token}`
+            Authorization: `Bearer ${token}`
           }
         : {})
     }
   }, [])
 
-  const request = async (
-    path,
-    options = {}
-  ) => {
-    const response = await fetch(
-      `${API_URL}${path}`,
-      {
-        ...options,
+  const request = async (path, options = {}) => {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...options,
 
-        headers: {
-          ...headers,
-          ...(options.headers || {})
-        }
+      headers: {
+        ...headers,
+        ...(options.headers || {})
       }
-    )
+    })
 
-    const text =
-      await response.text()
+    const text = await response.text()
 
     let data = null
 
@@ -251,58 +240,41 @@ const POSMostrador = () => {
     if (!response.ok) {
       throw new Error(
         data?.message ||
-        data?.error ||
-        'Error de conexión'
+          data?.error ||
+          'Error de conexión'
       )
     }
 
     return data
   }
 
-  const checkCashStatus =
-    async () => {
-      try {
-        const data =
-          await request(
-            '/cash/sessions'
-          )
+  const checkCashStatus = async () => {
+    try {
+      const data = await request('/cash/sessions')
 
-        const sessions =
-          getList(data, [
-            'sessions',
-            'cash_sessions'
-          ])
+      const sessions = getList(data, [
+        'sessions',
+        'cash_sessions'
+      ])
 
-        const activeSession =
-          sessions.find(
-            (session) => {
-              const status =
-                String(
-                  session.status ||
-                    ''
-                ).toLowerCase()
+      const activeSession = sessions.find((session) => {
+        const status = String(
+          session.status || ''
+        ).toLowerCase()
 
-              return (
-                status === 'open' ||
-                status ===
-                  'abierta' ||
-                (!session.closed_at &&
-                  !session.closedAt)
-              )
-            }
-          )
+        return (
+          status === 'open' ||
+          status === 'abierta' ||
+          (!session.closed_at &&
+            !session.closedAt)
+        )
+      })
 
-        const isOpen =
-          Boolean(activeSession)
-
-        setCashOpen(isOpen)
-
-        return isOpen
-      } catch {
-        setCashOpen(false)
-        return false
-      }
+      setCashOpen(Boolean(activeSession))
+    } catch {
+      setCashOpen(false)
     }
+  }
 
   const loadData = async () => {
     try {
@@ -313,12 +285,11 @@ const POSMostrador = () => {
         productsData,
         categoriesData,
         ordersData
-      ] =
-        await Promise.allSettled([
-          request('/products'),
-          request('/categories'),
-          request('/orders')
-        ])
+      ] = await Promise.allSettled([
+        request('/products'),
+        request('/categories'),
+        request('/orders')
+      ])
 
       if (
         productsData.status ===
@@ -332,8 +303,7 @@ const POSMostrador = () => {
         setProducts(
           list.filter(
             (product) =>
-              product.active !==
-              false
+              product.active !== false
           )
         )
       }
@@ -350,8 +320,7 @@ const POSMostrador = () => {
         setCategories(
           list.filter(
             (category) =>
-              category.active !==
-              false
+              category.active !== false
           )
         )
       }
@@ -372,7 +341,7 @@ const POSMostrador = () => {
     } catch (err) {
       setError(
         err.message ||
-        'No se pudieron cargar datos del POS'
+          'No se pudieron cargar datos del POS'
       )
     } finally {
       setLoading(false)
@@ -383,36 +352,27 @@ const POSMostrador = () => {
     loadData()
   }, [])
 
-  const sortedCategories =
-    useMemo(() => {
-      return [...categories].sort(
-        (a, b) => {
-          const orderA =
-            categoryOrderIndex(
-              a.name
-            )
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const orderA =
+        categoryOrderIndex(a.name)
 
-          const orderB =
-            categoryOrderIndex(
-              b.name
-            )
+      const orderB =
+        categoryOrderIndex(b.name)
 
-          if (orderA !== orderB) {
-            return orderA - orderB
-          }
+      if (orderA !== orderB) {
+        return orderA - orderB
+      }
 
-          return normalizeText(
-            a.name
-          ).localeCompare(
-            normalizeText(b.name)
-          )
-        }
+      return normalizeText(
+        a.name
+      ).localeCompare(
+        normalizeText(b.name)
       )
-    }, [categories])
+    })
+  }, [categories])
 
-  const productCategoryName = (
-    product
-  ) => {
+  const productCategoryName = (product) => {
     if (product.category?.name) {
       return product.category.name
     }
@@ -421,17 +381,12 @@ const POSMostrador = () => {
       return product.category_name
     }
 
-    const category =
-      categories.find(
-        (item) =>
-          item.id ===
-          product.category_id
-      )
-
-    return (
-      category?.name ||
-      'Sin categoría'
+    const category = categories.find(
+      (item) =>
+        item.id === product.category_id
     )
+
+    return category?.name || 'Sin categoría'
   }
 
   const topProducts = useMemo(() => {
@@ -450,10 +405,9 @@ const POSMostrador = () => {
           item.name_snapshot ||
           'Producto'
 
-        const quantity =
-          Number(
-            item.quantity || 1
-          )
+        const quantity = Number(
+          item.quantity || 1
+        )
 
         salesMap[name] =
           (salesMap[name] || 0) +
@@ -461,43 +415,31 @@ const POSMostrador = () => {
       })
     })
 
-    return Object.entries(
-      salesMap
-    )
-      .map(
-        ([name, quantity]) => {
-          const product =
-            products.find(
-              (item) =>
-                item.name === name
-            )
+    return Object.entries(salesMap)
+      .map(([name, quantity]) => {
+        const product = products.find(
+          (item) => item.name === name
+        )
 
-          return {
-            name,
-            quantity,
-            product
-          }
+        return {
+          name,
+          quantity,
+          product
         }
-      )
-      .filter(
-        (item) => item.product
-      )
+      })
+      .filter((item) => item.product)
       .sort(
         (a, b) =>
-          b.quantity -
-          a.quantity
+          b.quantity - a.quantity
       )
       .slice(0, 5)
   }, [orders, products])
 
-  const filteredProducts =
-    products.filter((product) => {
+  const filteredProducts = products.filter(
+    (product) => {
       const text =
-        `${
-          product.name || ''
-        } ${
-          product.description ||
-          ''
+        `${product.name || ''} ${
+          product.description || ''
         }`.toLowerCase()
 
       const matchesSearch =
@@ -506,42 +448,36 @@ const POSMostrador = () => {
         )
 
       const categoryName =
-        productCategoryName(
-          product
-        )
+        productCategoryName(product)
 
       const matchesCategory =
-        selectedCategory ===
-          'all' ||
+        selectedCategory === 'all' ||
         product.category_id ===
           selectedCategory ||
-        categoryName ===
-          selectedCategory
+        categoryName === selectedCategory
 
       return (
         matchesSearch &&
         matchesCategory
       )
-    })
+    }
+  )
 
   const addToCart = (product) => {
     setCart((current) => {
       const exists = current.find(
-        (item) =>
-          item.id === product.id
+        (item) => item.id === product.id
       )
 
       if (exists) {
-        return current.map(
-          (item) =>
-            item.id === product.id
-              ? {
-                  ...item,
-                  quantity:
-                    item.quantity +
-                    1
-                }
-              : item
+        return current.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                quantity:
+                  item.quantity + 1
+              }
+            : item
         )
       }
 
@@ -550,20 +486,13 @@ const POSMostrador = () => {
         {
           id: product.id,
           name: product.name,
-
           price: Number(
             product.price || 0
           ),
-
           quantity: 1,
-
           category_name:
-            productCategoryName(
-              product
-            ),
-
-          icon:
-            productIcon(product)
+            productCategoryName(product),
+          icon: productIcon(product)
         }
       ]
     })
@@ -579,8 +508,7 @@ const POSMostrador = () => {
     if (nextQuantity <= 0) {
       setCart((current) =>
         current.filter(
-          (item) =>
-            item.id !== id
+          (item) => item.id !== id
         )
       )
 
@@ -592,8 +520,7 @@ const POSMostrador = () => {
         item.id === id
           ? {
               ...item,
-              quantity:
-                nextQuantity
+              quantity: nextQuantity
             }
           : item
       )
@@ -603,8 +530,7 @@ const POSMostrador = () => {
   const removeItem = (id) => {
     setCart((current) =>
       current.filter(
-        (item) =>
-          item.id !== id
+        (item) => item.id !== id
       )
     )
   }
@@ -619,195 +545,415 @@ const POSMostrador = () => {
   const total = cart.reduce(
     (sum, item) =>
       sum +
-      Number(
-        item.price || 0
-      ) *
-        Number(
-          item.quantity || 0
-        ),
-
+      Number(item.price || 0) *
+        Number(item.quantity || 0),
     0
   )
 
-  const buildOrderItems = (
-    sourceCart = cart
-  ) =>
-    sourceCart.map((item) => ({
-      product_id:
-        item.product_id ||
-        item.id,
+  const paymentMethodText =
+    {
+      cash: 'EFECTIVO',
+      debit: 'DÉBITO',
+      credit: 'CRÉDITO',
+      transfer: 'TRANSFERENCIA'
+    }[paymentMethod] ||
+    paymentMethod.toUpperCase()
 
-      id:
-        item.id,
+  const printKitchenTicket = () => {
+    const productLines = cart
+      .map((item) => {
+        return `
+          <div class="item">
+            <div class="qty">
+              ${item.quantity} x
+            </div>
 
-      name:
-        item.name,
+            <div class="name">
+              ${item.name}
+            </div>
+          </div>
+        `
+      })
+      .join('')
 
-      product_name:
-        item.product_name ||
-        item.name,
+    const html = `
+      <html>
+        <head>
+          <title>
+            Comanda Cocina
+          </title>
 
-      quantity:
-        Number(
-          item.quantity || 1
-        ),
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
 
-      unit_price:
-        Number(
-          item.unit_price ||
-          item.price ||
-          0
-        ),
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              color: #000;
+              background: #fff;
+            }
 
-      price:
-        Number(
-          item.price || 0
-        ),
+            .center {
+              text-align: center;
+            }
 
-      subtotal:
-        Number(
-          item.subtotal ||
-          Number(
-            item.price || 0
-          ) *
-            Number(
-              item.quantity || 1
-            )
-        ),
+            .title {
+              font-size: 24px;
+              font-weight: 900;
+              margin: 0;
+            }
 
-      category_name:
-        item.category_name ||
-        'Sin categoría',
+            .subtitle {
+              font-size: 14px;
+              font-weight: 700;
+              margin-top: 4px;
+            }
 
-      notes:
-        item.notes ||
-        item.observations ||
-        ''
-    }))
+            .line {
+              border-top:
+                2px dashed #000;
+              margin: 10px 0;
+            }
 
-  const buildPrintableOrder = ({
-    savedOrder = {},
-    sourceCart = cart,
-    sourceTotal = total,
-    sourceCustomerName =
-      customerName,
-    sourceNotes = notes,
-    sourcePaymentMethod =
-      paymentMethod
-  } = {}) => {
-    const orderId =
-      savedOrder?.id ||
-      savedOrder?.order_id ||
-      null
+            .item {
+              display: flex;
+              gap: 8px;
+              font-size: 20px;
+              font-weight: 900;
+              margin: 12px 0;
+            }
 
-    return {
-      ...savedOrder,
+            .qty {
+              min-width: 42px;
+            }
 
-      id: orderId,
+            .name {
+              flex: 1;
+            }
 
-      order_number:
-        savedOrder
-          ?.order_number ||
-        savedOrder?.number ||
-        savedOrder?.code ||
-        orderId ||
-        '',
+            .customer-title {
+              font-size: 15px;
+              font-weight: 900;
+              text-align: center;
+              margin-bottom: 3px;
+            }
 
-      type: 'counter',
-      order_type: 'counter',
-      status: 'paid',
+            .customer-name {
+              font-size: 21px;
+              font-weight: 900;
+              text-align: center;
+              text-transform: uppercase;
+            }
 
-      payment_method:
-        sourcePaymentMethod,
+            .notes-title {
+              font-size: 16px;
+              font-weight: 900;
+              margin-bottom: 4px;
+            }
 
-      payment_method_text:
-        getPaymentMethodText(
-          sourcePaymentMethod
-        ),
+            .notes {
+              font-size: 17px;
+              font-weight: 900;
+              white-space: pre-wrap;
+            }
 
-      subtotal:
-        Number(
-          sourceTotal || 0
-        ),
+            .footer {
+              font-size: 12px;
+              margin-top: 10px;
+            }
+          </style>
+        </head>
 
-      total:
-        Number(
-          sourceTotal || 0
-        ),
+        <body>
+          <div class="center">
+            <h1 class="title">
+              COMANDA
+            </h1>
 
-      total_amount:
-        Number(
-          sourceTotal || 0
-        ),
+            <div class="subtitle">
+              COCINA - MOSTRADOR
+            </div>
 
-      customer_name:
-        sourceCustomerName.trim() ||
-        null,
+            <div class="footer">
+              ${new Date().toLocaleString(
+                'es-CL'
+              )}
+            </div>
+          </div>
 
-      customer: {
-        name:
-          sourceCustomerName.trim(),
+          <div class="line"></div>
 
-        phone: '',
-        address: '',
-        reference: ''
-      },
+          ${
+            customerName.trim()
+              ? `
+                <div class="customer-title">
+                  CLIENTE
+                </div>
 
-      notes:
-        sourceNotes.trim(),
+                <div class="customer-name">
+                  ${customerName.trim()}
+                </div>
 
-      items:
-        buildOrderItems(
-          sourceCart
-        ),
+                <div class="line"></div>
+              `
+              : ''
+          }
 
-      created_at:
-        savedOrder
-          ?.created_at ||
-        savedOrder
-          ?.createdAt ||
-        new Date()
-          .toISOString()
-    }
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="notes-title">
+            NOTAS DEL PEDIDO:
+          </div>
+
+          <div class="notes">
+            ${notes.trim() || 'SIN NOTAS'}
+          </div>
+
+          <div class="line"></div>
+
+          <div class="center footer">
+            AMERICAN BURGER
+          </div>
+        </body>
+      </html>
+    `
+
+    printHtmlHidden(html, 400)
+  }
+
+  const printCustomerReceipt = () => {
+    const productLines = cart
+      .map((item) => {
+        const lineTotal =
+          Number(item.price || 0) *
+          Number(item.quantity || 0)
+
+        return `
+          <div class="product">
+            <div>
+              <strong>
+                ${item.quantity} x ${item.name}
+              </strong>
+
+              <br />
+
+              <span>
+                ${money(item.price)} c/u
+              </span>
+            </div>
+
+            <div class="right">
+              ${money(lineTotal)}
+            </div>
+          </div>
+        `
+      })
+      .join('')
+
+    const html = `
+      <html>
+        <head>
+          <title>
+            Recibo Cliente
+          </title>
+
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+
+            body {
+              width: 80mm;
+              margin: 0;
+              padding: 6mm 4mm;
+              font-family: Arial, monospace;
+              font-size: 12px;
+              color: #000;
+              background: #fff;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .brand {
+              font-size: 22px;
+              font-weight: 900;
+              margin: 0;
+            }
+
+            .small {
+              font-size: 11px;
+            }
+
+            .line {
+              border-top:
+                1px dashed #000;
+              margin: 8px 0;
+            }
+
+            .row,
+            .product {
+              display: flex;
+              justify-content:
+                space-between;
+              gap: 8px;
+              margin: 6px 0;
+            }
+
+            .right {
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .total {
+              font-size: 18px;
+              font-weight: 900;
+            }
+
+            .thanks {
+              font-size: 12px;
+              margin-top: 10px;
+              text-align: center;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="center">
+            <h1 class="brand">
+              AMERICAN BURGER
+            </h1>
+
+            <div>
+              ARICA - CHILE
+            </div>
+
+            <div class="small">
+              RECIBO DE COMPRA
+            </div>
+          </div>
+
+          <div class="line"></div>
+
+          <div class="row">
+            <span>
+              Fecha
+            </span>
+
+            <span>
+              ${new Date().toLocaleDateString(
+                'es-CL'
+              )}
+            </span>
+          </div>
+
+          <div class="row">
+            <span>
+              Hora
+            </span>
+
+            <span>
+              ${new Date().toLocaleTimeString(
+                'es-CL'
+              )}
+            </span>
+          </div>
+
+          <div class="row">
+            <span>
+              Tipo
+            </span>
+
+            <span>
+              Mostrador
+            </span>
+          </div>
+
+          ${
+            customerName.trim()
+              ? `
+                <div class="row">
+                  <span>
+                    Cliente
+                  </span>
+
+                  <span>
+                    ${customerName.trim()}
+                  </span>
+                </div>
+              `
+              : ''
+          }
+
+          <div class="row">
+            <span>
+              Pago
+            </span>
+
+            <span>
+              ${paymentMethodText}
+            </span>
+          </div>
+
+          <div class="line"></div>
+
+          ${productLines}
+
+          <div class="line"></div>
+
+          <div class="row total">
+            <span>
+              TOTAL
+            </span>
+
+            <span>
+              ${money(total)}
+            </span>
+          </div>
+
+          <div class="center small">
+            Precios con IVA incluido
+          </div>
+
+          <div class="line"></div>
+
+          <div class="thanks">
+            Gracias por tu compra
+            <br />
+
+            🍔 American Burger 🍔
+          </div>
+        </body>
+      </html>
+    `
+
+    printHtmlHidden(html, 900)
   }
 
   const submitOrder = async () => {
-    if (saving) return
-
     setSaving(true)
     setError('')
     setMessage('')
 
-    const cartSnapshot =
-      cart.map((item) => ({
-        ...item
-      }))
-
-    const totalSnapshot =
-      Number(total || 0)
-
-    const customerSnapshot =
-      customerName
-
-    const notesSnapshot =
-      notes
-
-    const paymentSnapshot =
-      paymentMethod
-
     try {
-      const isCashOpen =
-        await checkCashStatus()
+      await checkCashStatus()
 
-      if (!isCashOpen) {
+      if (!cashOpen) {
         throw new Error(
           'Debes abrir caja antes de registrar ventas'
         )
       }
 
-      if (
-        cartSnapshot.length === 0
-      ) {
+      if (cart.length === 0) {
         throw new Error(
           'Agrega productos al pedido'
         )
@@ -817,169 +963,79 @@ const POSMostrador = () => {
         type: 'counter',
         order_type: 'counter',
         status: 'paid',
-
-        payment_method:
-          paymentSnapshot,
-
-        subtotal:
-          totalSnapshot,
-
-        total:
-          totalSnapshot,
-
-        total_amount:
-          totalSnapshot,
+        payment_method: paymentMethod,
+        subtotal: total,
+        total,
+        total_amount: total,
 
         customer: {
-          name:
-            customerSnapshot.trim(),
-
+          name: customerName.trim(),
           phone: '',
           address: '',
           reference: ''
         },
 
         customer_name:
-          customerSnapshot.trim() ||
-          null,
+          customerName.trim() || null,
 
-        notes:
-          notesSnapshot.trim(),
+        notes: notes.trim(),
 
-        items:
-          buildOrderItems(
-            cartSnapshot
-          )
+        items: cart.map((item) => ({
+          product_id: item.id,
+          name: item.name,
+
+          quantity: Number(
+            item.quantity || 1
+          ),
+
+          unit_price: Number(
+            item.price || 0
+          ),
+
+          price: Number(
+            item.price || 0
+          ),
+
+          subtotal:
+            Number(item.price || 0) *
+            Number(item.quantity || 1),
+
+          category_name:
+            item.category_name ||
+            'Sin categoría'
+        }))
       }
 
-      const orderResponse =
-        await request(
-          '/orders',
-          {
-            method: 'POST',
+      await request('/orders', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
 
-            body:
-              JSON.stringify(
-                payload
-              )
-          }
-        )
+      printKitchenTicket()
 
-      const savedOrder =
-        orderResponse?.order ||
-        orderResponse?.data ||
-        orderResponse ||
-        {}
+      setTimeout(() => {
+        printCustomerReceipt()
+      }, 900)
 
-      const orderId =
-        savedOrder?.id ||
-        savedOrder?.order_id ||
-        null
-
-      const printableOrder =
-        buildPrintableOrder({
-          savedOrder,
-
-          sourceCart:
-            cartSnapshot,
-
-          sourceTotal:
-            totalSnapshot,
-
-          sourceCustomerName:
-            customerSnapshot,
-
-          sourceNotes:
-            notesSnapshot,
-
-          sourcePaymentMethod:
-            paymentSnapshot
-        })
-
-      const printResult =
-        await printOrderDocuments({
-          order:
-            printableOrder,
-
-          referenceId:
-            orderId,
-
-          printKitchen: true,
-          printCustomer: true,
-          paperWidth: 80,
-          kitchenCopies: 1,
-          customerCopies: 1
-        })
+      setMessage(
+        'Venta registrada correctamente. Comanda y recibo enviados a impresión.'
+      )
 
       clearOrder()
 
-      if (
-        printResult.failed === 0
-      ) {
-        setMessage(
-          'Venta registrada correctamente. Comanda y recibo enviados al Print Agent.'
-        )
-      } else if (
-        printResult.successful > 0
-      ) {
-        setMessage(
-          'Venta registrada. Una impresión fue enviada correctamente, pero otra no pudo enviarse.'
-        )
-      } else {
-        setMessage(
-          'Venta registrada correctamente, pero no se pudieron enviar las impresiones. Revisa las asignaciones del Centro de impresión.'
-        )
-      }
-
-      await loadData()
+      loadData()
     } catch (err) {
       setError(
         err.message ||
-        'No se pudo registrar la venta'
+          'No se pudo registrar la venta'
       )
     } finally {
       setSaving(false)
     }
   }
 
-  const printTicket = async () => {
-    if (printing) return
-
-    if (cart.length === 0) {
-      setError(
-        'Agrega productos antes de imprimir el recibo'
-      )
-
-      return
-    }
-
-    setPrinting(true)
-    setError('')
-    setMessage('')
-
-    try {
-      const printableOrder =
-        buildPrintableOrder()
-
-      await printManualReceipt({
-        order:
-          printableOrder,
-
-        paperWidth: 80,
-        copies: 1
-      })
-
-      setMessage(
-        'Recibo enviado al Print Agent.'
-      )
-    } catch (err) {
-      setError(
-        err.message ||
-        'No se pudo enviar el recibo al Print Agent'
-      )
-    } finally {
-      setPrinting(false)
-    }
+  const printTicket = () => {
+    printCustomerReceipt()
   }
 
   return (
@@ -1019,7 +1075,8 @@ const POSMostrador = () => {
                   </h2>
 
                   <p className="text-gray-600">
-                    Toca un producto para agregarlo al pedido.
+                    Toca un producto para
+                    agregarlo al pedido.
                   </p>
                 </div>
 
@@ -1135,7 +1192,8 @@ const POSMostrador = () => {
               ) : filteredProducts.length ===
                 0 ? (
                 <div className="text-center py-10 text-gray-500">
-                  No hay productos disponibles.
+                  No hay productos
+                  disponibles.
                 </div>
               ) : (
                 <div>
@@ -1446,14 +1504,11 @@ const POSMostrador = () => {
                   type="button"
                   onClick={printTicket}
                   disabled={
-                    printing ||
                     cart.length === 0
                   }
                   className="w-full border border-gray-300 py-3 rounded-xl hover:bg-gray-100 disabled:opacity-50 font-bold"
                 >
-                  {printing
-                    ? 'Enviando recibo...'
-                    : '🧾 Imprimir recibo'}
+                  🧾 Imprimir recibo
                 </button>
               </div>
             </div>
