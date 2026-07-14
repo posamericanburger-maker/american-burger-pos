@@ -61,49 +61,155 @@ const normalizeText = (value = '') =>
 
 const getProductText = (product = {}) =>
   normalizeText(
-    `${product.name || ''} ${product.category_name || ''} ${
-      product.description || ''
-    }`
+    [
+      product.name,
+      product.product_name,
+      product.category_name,
+      product.category,
+      product.category?.name,
+      product.description,
+      product.tags,
+      product.type
+    ]
+      .filter(Boolean)
+      .join(' ')
   )
 
-const isAvailableProduct = (product = {}) =>
-  product.available !== false &&
-  product.active !== false &&
-  product.is_active !== false
+const toBoolean = (value, defaultValue = true) => {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue
+  }
+
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0
+  }
+
+  const normalized = normalizeText(value)
+
+  if (
+    ['false', '0', 'no', 'inactive', 'inactivo', 'agotado', 'disabled'].includes(
+      normalized
+    )
+  ) {
+    return false
+  }
+
+  if (
+    ['true', '1', 'si', 'yes', 'active', 'activo', 'disponible', 'enabled'].includes(
+      normalized
+    )
+  ) {
+    return true
+  }
+
+  return defaultValue
+}
+
+const isAvailableProduct = (product = {}) => {
+  const availableValue =
+    product.available ??
+    product.is_available ??
+    product.active ??
+    product.is_active
+
+  return toBoolean(availableValue, true)
+}
+
+const includesAny = (text, words = []) =>
+  words.some((word) => text.includes(word))
 
 const isBurgerProduct = (product = {}) => {
   const text = getProductText(product)
 
-  return (
-    text.includes('burger') ||
-    text.includes('hamburguesa')
-  )
+  return includesAny(text, [
+    'burger',
+    'hamburguesa',
+    'cheese',
+    'bacon cheese',
+    'bbq burger',
+    'american burger',
+    'california burger',
+    'oklahoma'
+  ])
 }
 
 const isFriesProduct = (product = {}) => {
   const text = getProductText(product)
 
-  return (
-    text.includes('papa') ||
-    text.includes('fries') ||
-    text.includes('frita')
-  )
+  return includesAny(text, [
+    'papa',
+    'papas',
+    'fries',
+    'frita',
+    'fritas',
+    'american fries'
+  ])
 }
 
 const isDrinkProduct = (product = {}) => {
   const text = getProductText(product)
 
-  return (
-    text.includes('bebida') ||
-    text.includes('coca') ||
-    text.includes('sprite') ||
-    text.includes('fanta') ||
-    text.includes('pepsi') ||
-    text.includes('lata') ||
-    text.includes('jugo') ||
-    text.includes('agua')
-  )
+  return includesAny(text, [
+    'bebida',
+    'refresco',
+    'gaseosa',
+    'coca',
+    'coca-cola',
+    'sprite',
+    'fanta',
+    'pepsi',
+    'lata',
+    'jugo',
+    'agua',
+    '330 cc',
+    '330cc',
+    '350 cc',
+    '350cc',
+    '355 cc',
+    '355cc'
+  ])
 }
+
+const getFriesScore = (product = {}) => {
+  const text = getProductText(product)
+  let score = 0
+
+  if (isFriesProduct(product)) score += 100
+  if (text.includes('papas fritas')) score += 40
+  if (text.includes('american fries')) score += 35
+  if (text.includes('200')) score += 20
+  if (text.includes('individual')) score += 10
+  if (text.includes('combo')) score -= 30
+
+  return score
+}
+
+const getDrinkScore = (product = {}) => {
+  const text = getProductText(product)
+  let score = 0
+
+  if (isDrinkProduct(product)) score += 100
+  if (text.includes('bebida lata')) score += 45
+  if (text.includes('lata')) score += 30
+  if (includesAny(text, ['330', '350', '355'])) score += 20
+  if (includesAny(text, ['coca', 'sprite', 'fanta', 'pepsi'])) score += 15
+  if (text.includes('combo')) score -= 30
+
+  return score
+}
+
+const findBestProduct = (products = [], scoreFunction) =>
+  [...products]
+    .map((product) => ({
+      product,
+      score: scoreFunction(product)
+    }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.product || null
 
 const getReducedMotion = () => {
   if (
@@ -227,33 +333,15 @@ function Home() {
       Array.isArray(products) ? products : []
     ).filter(isAvailableProduct)
 
-    const fries =
-      availableProducts.find((product) => {
-        const text = getProductText(product)
+    const fries = findBestProduct(
+      availableProducts,
+      getFriesScore
+    )
 
-        return (
-          isFriesProduct(product) &&
-          (text.includes('200') ||
-            text.includes('papas fritas'))
-        )
-      }) ||
-      availableProducts.find(isFriesProduct) ||
-      null
-
-    const drink =
-      availableProducts.find((product) => {
-        const text = getProductText(product)
-
-        return (
-          isDrinkProduct(product) &&
-          (text.includes('lata') ||
-            text.includes('330') ||
-            text.includes('350') ||
-            text.includes('355'))
-        )
-      }) ||
-      availableProducts.find(isDrinkProduct) ||
-      null
+    const drink = findBestProduct(
+      availableProducts,
+      getDrinkScore
+    )
 
     return {
       fries,
@@ -297,19 +385,29 @@ function Home() {
   }
 
   const openComboSuggestion = (burger) => {
-    if (
-      !isBurgerProduct(burger) ||
-      !suggestionProducts.fries ||
-      !suggestionProducts.drink
-    ) {
+    if (!isBurgerProduct(burger)) {
+      return
+    }
+
+    const fries = suggestionProducts.fries
+    const drink = suggestionProducts.drink
+
+    if (!fries && !drink) {
+      console.warn(
+        'No se encontraron papas ni bebidas disponibles para recomendar.',
+        {
+          burger,
+          products
+        }
+      )
       return
     }
 
     setComboSuggestion({
       open: true,
       burger,
-      fries: suggestionProducts.fries,
-      drink: suggestionProducts.drink
+      fries,
+      drink
     })
 
     if (comboTimeoutRef.current) {
@@ -321,7 +419,7 @@ function Home() {
     comboTimeoutRef.current =
       window.setTimeout(() => {
         closeComboSuggestion()
-      }, 9000)
+      }, 12000)
   }
 
   const bounceCart = () => {
@@ -569,17 +667,25 @@ function Home() {
     const fries = comboSuggestion.fries
     const drink = comboSuggestion.drink
 
-    if (!fries || !drink) {
+    const productsToAdd = [fries, drink].filter(Boolean)
+
+    if (productsToAdd.length === 0) {
       closeComboSuggestion()
       return
     }
 
-    addToCart(fries)
-    addToCart(drink)
+    productsToAdd.forEach((product) => {
+      addToCart(product)
+    })
+
     setCartOpen(false)
 
+    const addedNames = productsToAdd
+      .map((product) => product.name || product.product_name || 'Producto')
+      .join(' y ')
+
     showAddedMessage(
-      `${fries.name} y ${drink.name} agregados`
+      `${addedNames} agregados al pedido`
     )
 
     closeComboSuggestion()
