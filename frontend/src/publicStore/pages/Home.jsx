@@ -16,6 +16,7 @@ import FloatingCart from '../components/FloatingCart'
 import CartDrawer from '../components/CartDrawer'
 import CheckoutDrawer from '../components/CheckoutDrawer'
 import OrderSuccessModal from '../components/OrderSuccessModal'
+import ComboSuggestion from '../components/ComboSuggestion'
 import Footer from '../components/Footer'
 
 import { useCart } from '../hooks/useCart'
@@ -51,6 +52,59 @@ const buildFinalPhone = (value = '') => {
   return digits ? `56${digits}` : ''
 }
 
+const normalizeText = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const getProductText = (product = {}) =>
+  normalizeText(
+    `${product.name || ''} ${product.category_name || ''} ${
+      product.description || ''
+    }`
+  )
+
+const isAvailableProduct = (product = {}) =>
+  product.available !== false &&
+  product.active !== false &&
+  product.is_active !== false
+
+const isBurgerProduct = (product = {}) => {
+  const text = getProductText(product)
+
+  return (
+    text.includes('burger') ||
+    text.includes('hamburguesa')
+  )
+}
+
+const isFriesProduct = (product = {}) => {
+  const text = getProductText(product)
+
+  return (
+    text.includes('papa') ||
+    text.includes('fries') ||
+    text.includes('frita')
+  )
+}
+
+const isDrinkProduct = (product = {}) => {
+  const text = getProductText(product)
+
+  return (
+    text.includes('bebida') ||
+    text.includes('coca') ||
+    text.includes('sprite') ||
+    text.includes('fanta') ||
+    text.includes('pepsi') ||
+    text.includes('lata') ||
+    text.includes('jugo') ||
+    text.includes('agua')
+  )
+}
+
 const getReducedMotion = () => {
   if (
     typeof window === 'undefined' ||
@@ -66,6 +120,7 @@ const getReducedMotion = () => {
 
 function Home() {
   const {
+    products,
     filteredProducts,
     categories,
     selectedCategory,
@@ -101,7 +156,16 @@ function Home() {
   const [addedProduct, setAddedProduct] =
     useState('')
 
+  const [comboSuggestion, setComboSuggestion] =
+    useState({
+      open: false,
+      burger: null,
+      fries: null,
+      drink: null
+    })
+
   const addedTimeoutRef = useRef(null)
+  const comboTimeoutRef = useRef(null)
   const cartButtonRef = useRef(null)
 
   const [customer, setCustomer] = useState({
@@ -121,6 +185,12 @@ function Home() {
           addedTimeoutRef.current
         )
       }
+
+      if (comboTimeoutRef.current) {
+        window.clearTimeout(
+          comboTimeoutRef.current
+        )
+      }
     }
   }, [])
 
@@ -131,28 +201,65 @@ function Home() {
       return filteredProducts
     }
 
-    return filteredProducts.filter(
-      (product) => {
-        const name = String(
-          product.name || ''
-        ).toLowerCase()
+    return filteredProducts.filter((product) => {
+      const name = String(
+        product.name || ''
+      ).toLowerCase()
 
-        const description = String(
-          product.description || ''
-        ).toLowerCase()
+      const description = String(
+        product.description || ''
+      ).toLowerCase()
 
-        const category = String(
-          product.category_name || ''
-        ).toLowerCase()
+      const category = String(
+        product.category_name || ''
+      ).toLowerCase()
+
+      return (
+        name.includes(term) ||
+        description.includes(term) ||
+        category.includes(term)
+      )
+    })
+  }, [filteredProducts, search])
+
+  const suggestionProducts = useMemo(() => {
+    const availableProducts = (
+      Array.isArray(products) ? products : []
+    ).filter(isAvailableProduct)
+
+    const fries =
+      availableProducts.find((product) => {
+        const text = getProductText(product)
 
         return (
-          name.includes(term) ||
-          description.includes(term) ||
-          category.includes(term)
+          isFriesProduct(product) &&
+          (text.includes('200') ||
+            text.includes('papas fritas'))
         )
-      }
-    )
-  }, [filteredProducts, search])
+      }) ||
+      availableProducts.find(isFriesProduct) ||
+      null
+
+    const drink =
+      availableProducts.find((product) => {
+        const text = getProductText(product)
+
+        return (
+          isDrinkProduct(product) &&
+          (text.includes('lata') ||
+            text.includes('330') ||
+            text.includes('350') ||
+            text.includes('355'))
+        )
+      }) ||
+      availableProducts.find(isDrinkProduct) ||
+      null
+
+    return {
+      fries,
+      drink
+    }
+  }, [products])
 
   const deliveryFee =
     customer.deliveryType === 'delivery'
@@ -172,6 +279,51 @@ function Home() {
       ? cashAmount - total
       : 0
 
+  const closeComboSuggestion = () => {
+    setComboSuggestion({
+      open: false,
+      burger: null,
+      fries: null,
+      drink: null
+    })
+
+    if (comboTimeoutRef.current) {
+      window.clearTimeout(
+        comboTimeoutRef.current
+      )
+
+      comboTimeoutRef.current = null
+    }
+  }
+
+  const openComboSuggestion = (burger) => {
+    if (
+      !isBurgerProduct(burger) ||
+      !suggestionProducts.fries ||
+      !suggestionProducts.drink
+    ) {
+      return
+    }
+
+    setComboSuggestion({
+      open: true,
+      burger,
+      fries: suggestionProducts.fries,
+      drink: suggestionProducts.drink
+    })
+
+    if (comboTimeoutRef.current) {
+      window.clearTimeout(
+        comboTimeoutRef.current
+      )
+    }
+
+    comboTimeoutRef.current =
+      window.setTimeout(() => {
+        closeComboSuggestion()
+      }, 9000)
+  }
+
   const bounceCart = () => {
     const cartButton = cartButtonRef.current
 
@@ -185,22 +337,18 @@ function Home() {
     cartButton.animate(
       [
         {
-          transform: 'scale(1) translateY(0)',
-          offset: 0
+          transform: 'scale(1) translateY(0)'
         },
         {
           transform:
-            'scale(1.08) translateY(-8px)',
-          offset: 0.38
+            'scale(1.08) translateY(-8px)'
         },
         {
           transform:
-            'scale(0.97) translateY(2px)',
-          offset: 0.7
+            'scale(0.97) translateY(2px)'
         },
         {
-          transform: 'scale(1) translateY(0)',
-          offset: 1
+          transform: 'scale(1) translateY(0)'
         }
       ],
       {
@@ -289,7 +437,8 @@ function Home() {
       justifyContent: 'center',
       background:
         'linear-gradient(135deg, #fef3c7, #ffffff, #fee2e2)',
-      border: '3px solid rgba(250, 204, 21, 0.95)',
+      border:
+        '3px solid rgba(250, 204, 21, 0.95)',
       boxShadow:
         '0 18px 45px rgba(0, 0, 0, 0.32)',
       willChange:
@@ -297,7 +446,8 @@ function Home() {
     })
 
     if (animationData.imageUrl) {
-      const image = document.createElement('img')
+      const image =
+        document.createElement('img')
 
       image.src = animationData.imageUrl
       image.alt = ''
@@ -318,15 +468,21 @@ function Home() {
       )}px`
     }
 
-    document.body.appendChild(flyingElement)
+    document.body.appendChild(
+      flyingElement
+    )
 
     const deltaX = targetX - startX
     const deltaY = targetY - startY
 
     const middleX = deltaX * 0.52
+
     const middleY =
       deltaY * 0.32 -
-      Math.min(110, Math.abs(deltaX) * 0.15)
+      Math.min(
+        110,
+        Math.abs(deltaX) * 0.15
+      )
 
     let animation
 
@@ -337,8 +493,7 @@ function Home() {
             transform:
               'translate3d(0, 0, 0) scale(1) rotate(0deg)',
             opacity: 1,
-            filter: 'blur(0px)',
-            offset: 0
+            filter: 'blur(0px)'
           },
           {
             transform: `translate3d(${middleX}px, ${middleY}px, 0) scale(0.78) rotate(8deg)`,
@@ -349,8 +504,7 @@ function Home() {
           {
             transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(0.2) rotate(18deg)`,
             opacity: 0.15,
-            filter: 'blur(1px)',
-            offset: 1
+            filter: 'blur(1px)'
           }
         ],
         {
@@ -376,10 +530,8 @@ function Home() {
     }
   }
 
-  const showAddedMessage = (product) => {
-    setAddedProduct(
-      `${product?.name || 'Producto'} agregado al pedido`
-    )
+  const showAddedMessage = (text) => {
+    setAddedProduct(text)
 
     if (addedTimeoutRef.current) {
       window.clearTimeout(
@@ -399,21 +551,48 @@ function Home() {
   ) => {
     addToCart(product)
     setCartOpen(false)
-    showAddedMessage(product)
 
-    /*
-     * Esperamos dos cuadros de renderizado.
-     * Esto permite que el carrito aparezca antes
-     * de calcular su posición final.
-     */
+    showAddedMessage(
+      `${product?.name || 'Producto'} agregado al pedido`
+    )
+
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         animateProductToCart(animationData)
       })
     })
+
+    openComboSuggestion(product)
+  }
+
+  const handleAddSuggestedCombo = () => {
+    const fries = comboSuggestion.fries
+    const drink = comboSuggestion.drink
+
+    if (!fries || !drink) {
+      closeComboSuggestion()
+      return
+    }
+
+    addToCart(fries)
+    addToCart(drink)
+    setCartOpen(false)
+
+    showAddedMessage(
+      `${fries.name} y ${drink.name} agregados`
+    )
+
+    closeComboSuggestion()
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        bounceCart()
+      })
+    })
   }
 
   const handleOpenCart = () => {
+    closeComboSuggestion()
     setCheckoutOpen(false)
     setCartOpen(true)
   }
@@ -423,6 +602,7 @@ function Home() {
   }
 
   const handleContinueToCheckout = () => {
+    closeComboSuggestion()
     setCartOpen(false)
     setCheckoutOpen(true)
   }
@@ -597,6 +777,7 @@ Monto: ${money(total)}
         })
 
       clearCart()
+      closeComboSuggestion()
       setCartOpen(false)
       setCheckoutOpen(false)
 
@@ -662,7 +843,7 @@ Monto: ${money(total)}
 
       <section
         id="menu"
-        className="mx-auto max-w-4xl px-4 py-8 pb-36 sm:pb-28"
+        className="mx-auto max-w-4xl px-4 py-8 pb-40 sm:pb-32"
       >
         <div className="mb-6">
           <p className="text-xs font-black tracking-widest text-red-600">
@@ -726,6 +907,17 @@ Monto: ${money(total)}
           </div>
         </div>
       )}
+
+      <ComboSuggestion
+        open={comboSuggestion.open}
+        burger={comboSuggestion.burger}
+        fries={comboSuggestion.fries}
+        drink={comboSuggestion.drink}
+        onClose={closeComboSuggestion}
+        onAddCombo={
+          handleAddSuggestedCombo
+        }
+      />
 
       <FloatingCart
         ref={cartButtonRef}
