@@ -1,3 +1,10 @@
+import {
+  forwardRef,
+  memo,
+  useEffect,
+  useRef
+} from 'react'
+
 const money = (value) =>
   new Intl.NumberFormat('es-CL', {
     style: 'currency',
@@ -5,17 +12,64 @@ const money = (value) =>
     maximumFractionDigits: 0
   }).format(Number(value || 0))
 
-function FloatingCart({
-  itemCount = 0,
-  total = 0,
-  onClick = () => {}
-}) {
-  const safeItemCount = Math.max(0, Number(itemCount || 0))
-  const safeTotal = Number(total || 0)
+const FloatingCart = forwardRef(function FloatingCart(
+  {
+    itemCount = 0,
+    total = 0,
+    onClick = () => {}
+  },
+  forwardedRef
+) {
+  const counterRef = useRef(null)
+  const previousCountRef = useRef(
+    Number(itemCount || 0)
+  )
 
-  if (safeItemCount <= 0) {
-    return null
-  }
+  const safeItemCount = Math.max(
+    0,
+    Number(itemCount || 0)
+  )
+
+  const safeTotal = Number(total || 0)
+  const hasItems = safeItemCount > 0
+
+  useEffect(() => {
+    const previousCount = previousCountRef.current
+
+    if (
+      safeItemCount > previousCount &&
+      counterRef.current &&
+      typeof counterRef.current.animate ===
+        'function'
+    ) {
+      counterRef.current.animate(
+        [
+          {
+            transform: 'scale(1)',
+            offset: 0
+          },
+          {
+            transform: 'scale(1.45)',
+            offset: 0.45
+          },
+          {
+            transform: 'scale(0.92)',
+            offset: 0.75
+          },
+          {
+            transform: 'scale(1)',
+            offset: 1
+          }
+        ],
+        {
+          duration: 450,
+          easing: 'ease-out'
+        }
+      )
+    }
+
+    previousCountRef.current = safeItemCount
+  }, [safeItemCount])
 
   return (
     <div
@@ -35,13 +89,22 @@ function FloatingCart({
       "
     >
       <button
+        ref={forwardedRef}
         type="button"
         onClick={onClick}
-        aria-label={`Ver pedido con ${safeItemCount} ${
-          safeItemCount === 1 ? 'producto' : 'productos'
-        }, total ${money(safeTotal)}`}
-        className="
-          pointer-events-auto
+        disabled={!hasItems}
+        aria-hidden={!hasItems}
+        tabIndex={hasItems ? 0 : -1}
+        aria-label={
+          hasItems
+            ? `Ver pedido con ${safeItemCount} ${
+                safeItemCount === 1
+                  ? 'producto'
+                  : 'productos'
+              }, total ${money(safeTotal)}`
+            : 'Carrito vacío'
+        }
+        className={`
           flex
           w-full
           items-center
@@ -55,7 +118,8 @@ function FloatingCart({
           py-3.5
           text-black
           shadow-[0_12px_35px_rgba(250,204,21,0.35)]
-          transition
+          transition-all
+          duration-300
           hover:bg-yellow-300
           active:scale-[0.98]
 
@@ -65,7 +129,13 @@ function FloatingCart({
           sm:px-5
           sm:py-4
           sm:hover:scale-[1.03]
-        "
+
+          ${
+            hasItems
+              ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+              : 'pointer-events-none translate-y-8 scale-95 opacity-0'
+          }
+        `}
       >
         <div className="flex min-w-0 items-center gap-3">
           <div
@@ -85,6 +155,7 @@ function FloatingCart({
             🛒
 
             <span
+              ref={counterRef}
               className="
                 absolute
                 -right-2
@@ -104,7 +175,9 @@ function FloatingCart({
                 ring-yellow-400
               "
             >
-              {safeItemCount > 99 ? '99+' : safeItemCount}
+              {safeItemCount > 99
+                ? '99+'
+                : safeItemCount}
             </span>
           </div>
 
@@ -115,7 +188,9 @@ function FloatingCart({
 
             <p className="mt-1 truncate text-base font-black leading-tight sm:text-lg">
               {safeItemCount}{' '}
-              {safeItemCount === 1 ? 'producto' : 'productos'}
+              {safeItemCount === 1
+                ? 'producto'
+                : 'productos'}
             </p>
           </div>
         </div>
@@ -132,6 +207,6 @@ function FloatingCart({
       </button>
     </div>
   )
-}
+})
 
-export default FloatingCart
+export default memo(FloatingCart)
