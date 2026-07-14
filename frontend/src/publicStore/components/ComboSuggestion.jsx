@@ -5,30 +5,39 @@ const money = (value) =>
     maximumFractionDigits: 0
   }).format(Number(value || 0))
 
-function ComboProductRow({
-  product,
-  emoji,
-  label
+function SuggestedProductRow({
+  product = null,
+  emoji = '🍔',
+  label = 'Producto'
 }) {
   if (!product) {
     return null
   }
 
+  const productName =
+    product.name ||
+    product.product_name ||
+    label
+
+  const productPrice = Number(
+    product.price ||
+    product.unit_price ||
+    0
+  )
+
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <span
-          className="text-2xl"
           aria-hidden="true"
+          className="text-2xl"
         >
           {emoji}
         </span>
 
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-white">
-            {product.name ||
-              product.product_name ||
-              label}
+            {productName}
           </p>
 
           <p className="text-xs text-neutral-400">
@@ -37,12 +46,8 @@ function ComboProductRow({
         </div>
       </div>
 
-      <strong className="ml-3 shrink-0 text-yellow-400">
-        {money(
-          product.price ||
-            product.unit_price ||
-            0
-        )}
+      <strong className="shrink-0 text-yellow-400">
+        {money(productPrice)}
       </strong>
     </div>
   )
@@ -50,47 +55,64 @@ function ComboProductRow({
 
 function ComboSuggestion({
   open = false,
-  burger = null,
-  fries = null,
+  sourceProduct = null,
+  suggestionType = '',
+  combo = null,
   drink = null,
   onClose = () => {},
-  onAddCombo = () => {}
+  onAdd = () => {}
 }) {
-  const suggestedProducts = [
-    fries,
-    drink
-  ].filter(Boolean)
+  const isComboSuggestion =
+    suggestionType === 'combo' &&
+    Boolean(combo)
+
+  const isDrinkSuggestion =
+    suggestionType === 'drink' &&
+    Boolean(drink)
 
   if (
     !open ||
-    suggestedProducts.length === 0
+    (!isComboSuggestion &&
+      !isDrinkSuggestion)
   ) {
     return null
   }
 
-  const suggestionTotal =
-    suggestedProducts.reduce(
-      (sum, product) =>
-        sum +
-        Number(
-          product.price ||
-            product.unit_price ||
-            0
-        ),
-      0
-    )
+  const suggestedProduct =
+    isComboSuggestion
+      ? combo
+      : drink
 
-  const title =
-    fries && drink
-      ? '¿Agregamos papas y bebida?'
-      : fries
-        ? '¿Agregamos unas papas?'
-        : '¿Agregamos una bebida?'
+  const suggestedPrice = Number(
+    suggestedProduct?.price ||
+    suggestedProduct?.unit_price ||
+    0
+  )
 
-  const buttonText =
-    fries && drink
-      ? 'AGREGAR AMBOS'
-      : 'AGREGAR AL PEDIDO'
+  const sourceName =
+    sourceProduct?.name ||
+    sourceProduct?.product_name ||
+    'tu pedido'
+
+  const title = isComboSuggestion
+    ? 'Convierte tu hamburguesa en combo'
+    : '¿Agregamos una bebida?'
+
+  const description = isComboSuggestion
+    ? `Agrega papas y bebida a tu ${sourceName}.`
+    : `Ideal para acompañar tu ${sourceName}.`
+
+  const buttonText = isComboSuggestion
+    ? 'AGREGAR ARMA TU COMBO'
+    : 'AGREGAR BEBIDA'
+
+  const productLabel = isComboSuggestion
+    ? 'Papas + bebida'
+    : 'Bebida'
+
+  const productEmoji = isComboSuggestion
+    ? '🍟'
+    : '🥤'
 
   return (
     <aside
@@ -124,7 +146,7 @@ function ComboSuggestion({
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-yellow-400">
               Completa tu pedido
             </p>
@@ -133,12 +155,9 @@ function ComboSuggestion({
               {title}
             </h3>
 
-            {burger?.name && (
-              <p className="mt-1 text-sm text-neutral-400">
-                Ideal para acompañar tu{' '}
-                {burger.name}.
-              </p>
-            )}
+            <p className="mt-1 text-sm leading-5 text-neutral-400">
+              {description}
+            </p>
           </div>
 
           <button
@@ -165,17 +184,11 @@ function ComboSuggestion({
           </button>
         </div>
 
-        <div className="mt-4 space-y-2">
-          <ComboProductRow
-            product={fries}
-            emoji="🍟"
-            label="Papas fritas"
-          />
-
-          <ComboProductRow
-            product={drink}
-            emoji="🥤"
-            label="Bebida"
+        <div className="mt-4">
+          <SuggestedProductRow
+            product={suggestedProduct}
+            emoji={productEmoji}
+            label={productLabel}
           />
         </div>
 
@@ -186,20 +199,22 @@ function ComboSuggestion({
             </p>
 
             <p className="mt-1 text-2xl font-black text-yellow-400">
-              {money(suggestionTotal)}
+              {money(suggestedPrice)}
             </p>
           </div>
 
           <button
             type="button"
-            onClick={onAddCombo}
+            onClick={onAdd}
             className="
+              max-w-[210px]
               rounded-2xl
               bg-yellow-400
               px-5
               py-3.5
               text-sm
               font-black
+              leading-tight
               text-black
               shadow-lg
               shadow-yellow-400/20
