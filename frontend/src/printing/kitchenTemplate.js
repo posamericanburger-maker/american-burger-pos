@@ -6,40 +6,56 @@ const escapeHtml = (value = '') =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;')
 
-const getOrderItems = (order = {}) => {
-  if (Array.isArray(order.items)) {
+const getOrderItems = (
+  order = {}
+) => {
+  if (
+    Array.isArray(order.items)
+  ) {
     return order.items
   }
 
-  if (Array.isArray(order.order_items)) {
+  if (
+    Array.isArray(
+      order.order_items
+    )
+  ) {
     return order.order_items
   }
 
   return []
 }
 
-const getItemName = (item = {}) =>
+const getItemName = (
+  item = {}
+) =>
   item.name ||
   item.product_name ||
   item.name_snapshot ||
   item.product?.name ||
   'Producto'
 
-const getItemNotes = (item = {}) =>
+const getItemNotes = (
+  item = {}
+) =>
   item.notes ||
   item.observations ||
   item.comment ||
   item.instructions ||
   ''
 
-const getOrderNumber = (order = {}) =>
+const getOrderNumber = (
+  order = {}
+) =>
   order.order_number ||
   order.number ||
   order.code ||
   order.id ||
   ''
 
-const getOrderType = (order = {}) => {
+const getOrderType = (
+  order = {}
+) => {
   const type = String(
     order.order_type ||
       order.type ||
@@ -79,7 +95,9 @@ const formatDate = (value) => {
     )
   ) {
     return new Date()
-      .toLocaleString('es-CL')
+      .toLocaleString(
+        'es-CL'
+      )
   }
 
   return date.toLocaleString(
@@ -94,10 +112,14 @@ const formatDate = (value) => {
   )
 }
 
-const normalizeItem = (item = {}) => ({
+const normalizeItem = (
+  item = {}
+) => ({
   quantity: Math.max(
     1,
-    Number(item.quantity || 1)
+    Number(
+      item.quantity || 1
+    )
   ),
 
   name:
@@ -143,9 +165,9 @@ export const buildKitchenTicketHtml = (
       Date.now()
     )
 
-  const productLines = items
-    .map((item) => {
-      return `
+  const productLines =
+    items
+      .map((item) => `
         <section class="product-item">
           <div class="product-main">
             <div class="product-quantity">
@@ -166,16 +188,16 @@ export const buildKitchenTicketHtml = (
               ? `
                 <div class="product-note">
                   ${escapeHtml(
-                    item.notes.toUpperCase()
+                    item.notes
+                      .toUpperCase()
                   )}
                 </div>
               `
               : ''
           }
         </section>
-      `
-    })
-    .join('')
+      `)
+      .join('')
 
   return `
     <!doctype html>
@@ -195,23 +217,29 @@ export const buildKitchenTicketHtml = (
           }
 
           * {
-            box-sizing: border-box;
+            box-sizing:
+              border-box;
           }
 
-          html,
+          html {
+            width: 80mm;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+          }
+
           body {
             width: 80mm;
             margin: 0;
             padding: 0;
             background: #ffffff;
             color: #000000;
+
             font-family:
               Arial,
               Helvetica,
               sans-serif;
-          }
 
-          body {
             -webkit-print-color-adjust:
               exact;
 
@@ -220,64 +248,84 @@ export const buildKitchenTicketHtml = (
           }
 
           .ticket {
-            width: 72mm;
-            max-width: 72mm;
-            margin: 0 auto;
+            width: 66mm;
+            max-width: 66mm;
+
+            margin:
+              0
+              0
+              0
+              2mm;
+
             padding:
               1.5mm
-              1.5mm
-              3mm;
+              1mm
+              3mm
+              1mm;
 
             overflow: hidden;
           }
 
-          .center {
-            text-align: center;
-          }
-
           .header-row {
-            display: flex;
-            align-items: center;
-            justify-content:
-              space-between;
+            display: grid;
+
+            grid-template-columns:
+              minmax(0, 1fr)
+              auto;
+
             gap: 2mm;
+            align-items: center;
           }
 
           .title {
+            min-width: 0;
             margin: 0;
-            font-size: 16px;
+
+            font-size: 15px;
             font-weight: 900;
             line-height: 1;
+
+            overflow-wrap:
+              anywhere;
           }
 
           .order-number {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 900;
             line-height: 1;
             white-space: nowrap;
           }
 
           .order-info {
-            display: flex;
-            align-items: center;
-            justify-content:
-              space-between;
+            display: grid;
+
+            grid-template-columns:
+              auto
+              minmax(0, 1fr);
+
             gap: 2mm;
+            align-items: center;
+
             margin-top: 3px;
           }
 
           .order-type {
-            display: inline-block;
-            padding: 2px 6px;
-            border: 1.5px solid
+            padding: 2px 5px;
+
+            border:
+              1.5px solid
               #000000;
-            font-size: 10px;
+
+            font-size: 9px;
             font-weight: 900;
-            line-height: 1.1;
+            line-height: 1;
+            white-space: nowrap;
           }
 
           .date {
-            font-size: 9px;
+            min-width: 0;
+
+            font-size: 8.5px;
             font-weight: 700;
             text-align: right;
             white-space: nowrap;
@@ -286,6 +334,7 @@ export const buildKitchenTicketHtml = (
           .line {
             width: 100%;
             margin: 4px 0;
+
             border-top:
               1.5px dashed
               #000000;
@@ -293,40 +342,52 @@ export const buildKitchenTicketHtml = (
 
           .customer {
             display: grid;
+
             grid-template-columns:
-              15mm minmax(0, 1fr);
+              13mm
+              minmax(0, 1fr);
+
             gap: 2mm;
             align-items: start;
           }
 
           .customer-title {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 900;
           }
 
           .customer-name {
             min-width: 0;
-            font-size: 13px;
+
+            font-size: 12px;
             font-weight: 900;
             line-height: 1.1;
+
             text-align: right;
-            text-transform: uppercase;
-            overflow-wrap: anywhere;
+            text-transform:
+              uppercase;
+
+            overflow-wrap:
+              anywhere;
           }
 
           .products-title {
             margin: 0 0 2px;
-            font-size: 10px;
+
+            font-size: 9px;
             font-weight: 900;
             text-align: center;
           }
 
           .product-item {
             width: 100%;
+
             padding: 2.5px 0;
+
             border-bottom:
               1px dotted
               #000000;
+
             page-break-inside:
               avoid;
           }
@@ -337,14 +398,17 @@ export const buildKitchenTicketHtml = (
 
           .product-main {
             display: grid;
+
             grid-template-columns:
-              9mm minmax(0, 1fr);
+              8mm
+              minmax(0, 1fr);
+
             gap: 1.5mm;
             align-items: start;
           }
 
           .product-quantity {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 900;
             line-height: 1.08;
             white-space: nowrap;
@@ -352,17 +416,24 @@ export const buildKitchenTicketHtml = (
 
           .product-name {
             min-width: 0;
-            font-size: 13px;
+
+            font-size: 12px;
             font-weight: 900;
             line-height: 1.08;
-            overflow-wrap: anywhere;
-            word-break: normal;
+
+            overflow-wrap:
+              anywhere;
+
+            word-break:
+              break-word;
           }
 
           .product-note {
+            max-width: 54mm;
+
             margin:
               2px 0
-              0 10.5mm;
+              0 9.5mm;
 
             padding:
               2px 3px;
@@ -371,41 +442,59 @@ export const buildKitchenTicketHtml = (
               2px solid
               #000000;
 
-            font-size: 10px;
+            font-size: 9.5px;
             font-weight: 900;
             line-height: 1.12;
-            overflow-wrap: anywhere;
+
+            overflow-wrap:
+              anywhere;
+
+            word-break:
+              break-word;
           }
 
           .notes {
+            width: 100%;
+
             padding: 3px;
+
             border:
               1.5px solid
               #000000;
 
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 900;
             line-height: 1.15;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
+
+            white-space:
+              pre-wrap;
+
+            overflow-wrap:
+              anywhere;
+
+            word-break:
+              break-word;
           }
 
           .notes-label {
             margin-right: 3px;
-            font-size: 9px;
+            font-size: 8.5px;
             font-weight: 900;
           }
 
           .footer {
+            width: 100%;
             margin-top: 4px;
-            font-size: 9px;
+
+            font-size: 8.5px;
             font-weight: 900;
             text-align: center;
           }
 
           .empty {
             padding: 3px 0;
-            font-size: 11px;
+
+            font-size: 10px;
             font-weight: 900;
             text-align: center;
           }
