@@ -152,6 +152,10 @@ const isComboProduct = (product = {}) => {
 const isBurgerProduct = (product = {}) => {
   const text = getProductText(product)
 
+  /*
+   * Evita confundir el producto "Arma tu Combo"
+   * con una hamburguesa.
+   */
   if (isComboProduct(product)) {
     return false
   }
@@ -174,6 +178,10 @@ const isBurgerProduct = (product = {}) => {
 const isChickenProduct = (product = {}) => {
   const text = getProductText(product)
 
+  /*
+   * Crispy Burger contiene la palabra crispy,
+   * pero debe tratarse primero como hamburguesa.
+   */
   if (isBurgerProduct(product)) {
     return false
   }
@@ -192,6 +200,10 @@ const isChickenProduct = (product = {}) => {
 const isFriesProduct = (product = {}) => {
   const text = getProductText(product)
 
+  /*
+   * Arma tu Combo puede mencionar papas en su descripción,
+   * pero no debe identificarse como una porción de papas.
+   */
   if (isComboProduct(product)) {
     return false
   }
@@ -520,6 +532,10 @@ function Home() {
     const combo = suggestionProducts.combo
     const drink = suggestionProducts.drink
 
+    /*
+     * Hamburguesas:
+     * recomienda el producto real "Arma tu Combo".
+     */
     if (isBurgerProduct(product)) {
       if (!combo) {
         console.warn(
@@ -545,6 +561,10 @@ function Home() {
       return
     }
 
+    /*
+     * Pollo:
+     * recomienda únicamente una bebida.
+     */
     if (isChickenProduct(product)) {
       if (!drink) {
         console.warn(
@@ -570,6 +590,10 @@ function Home() {
       return
     }
 
+    /*
+     * Papas:
+     * recomienda únicamente una bebida.
+     */
     if (isFriesProduct(product)) {
       if (!drink) {
         return
@@ -682,9 +706,6 @@ function Home() {
       targetRect.top +
       targetRect.height / 2 -
       startSize / 2
-
-    const flyingElement =
-      document.createElement('div')
 
     flyingElement.setAttribute(
       'aria-hidden',
