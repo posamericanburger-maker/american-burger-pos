@@ -1,112 +1,607 @@
 import logo from '../../NNN.png'
 
+const WHATSAPP_URL =
+  'https://wa.me/56930809265?text=Hola%20American%20Burger%20🍔%20quiero%20hacer%20un%20pedido.'
+
 function Hero() {
   return (
     <section
       id="inicio"
-      className="relative overflow-hidden bg-black border-b border-white/10"
+      className="
+        relative
+        isolate
+        overflow-hidden
+        border-b
+        border-white/10
+        bg-[#050505]
+      "
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,199,44,.18),transparent_28%),radial-gradient(circle_at_70%_60%,rgba(218,41,28,.45),transparent_36%),linear-gradient(135deg,#020202_0%,#090000_45%,#270000_100%)]" />
+      {/* Fondo principal */}
+      <div
+        aria-hidden="true"
+        className="
+          absolute
+          inset-0
+          -z-30
+          bg-[radial-gradient(circle_at_80%_30%,rgba(218,41,28,0.23),transparent_34%),radial-gradient(circle_at_20%_15%,rgba(255,199,44,0.12),transparent_28%),linear-gradient(135deg,#050505_0%,#090909_48%,#180300_100%)]
+        "
+      />
 
-      <div className="absolute inset-0 opacity-20 bg-[linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:44px_44px]" />
+      {/* Trama muy sutil */}
+      <div
+        aria-hidden="true"
+        className="
+          absolute
+          inset-0
+          -z-20
+          opacity-[0.08]
+          bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)]
+          bg-[size:48px_48px]
+        "
+      />
 
-      <div className="relative max-w-7xl mx-auto px-5 md:px-8 py-10 md:py-20">
-        <div className="grid lg:grid-cols-[1fr_0.9fr] gap-10 items-center">
+      {/* Mancha decorativa */}
+      <div
+        aria-hidden="true"
+        className="
+          absolute
+          -right-28
+          top-20
+          -z-10
+          h-[420px]
+          w-[420px]
+          rounded-full
+          bg-red-600/20
+          blur-[110px]
 
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-              <div className="relative w-32 h-32 md:w-44 md:h-44 shrink-0">
-                <div className="absolute inset-0 rounded-full bg-yellow-400 blur-2xl opacity-70 animate-pulse" />
-                <div className="absolute inset-0 rounded-full bg-yellow-400 shadow-[0_0_60px_rgba(255,199,44,.9)]" />
+          md:h-[620px]
+          md:w-[620px]
+        "
+      />
 
-                <div className="relative w-full h-full rounded-full bg-yellow-400 p-2 border-4 border-yellow-300 shadow-2xl">
-                  <img
-                    src={logo}
-                    alt="American Burger"
-                    className="w-full h-full object-contain rounded-full"
-                  />
-                </div>
-              </div>
+      <div
+        className="
+          mx-auto
+          grid
+          min-h-[calc(100svh-72px)]
+          max-w-7xl
+          items-center
+          gap-10
+          px-5
+          py-10
 
+          sm:px-6
+          sm:py-14
+
+          lg:min-h-[680px]
+          lg:grid-cols-[1.05fr_0.95fr]
+          lg:gap-16
+          lg:px-8
+          lg:py-20
+        "
+      >
+        {/* Contenido */}
+        <div className="relative z-10">
+          <div
+            className="
+              inline-flex
+              items-center
+              gap-2
+              rounded-full
+              border
+              border-yellow-400/25
+              bg-yellow-400/10
+              px-3.5
+              py-2
+              text-[11px]
+              font-black
+              uppercase
+              tracking-[0.16em]
+              text-yellow-400
+
+              sm:text-xs
+            "
+          >
+            <span
+              className="
+                h-2
+                w-2
+                rounded-full
+                bg-green-500
+                shadow-[0_0_12px_rgba(34,197,94,0.8)]
+              "
+            />
+
+            Pedidos online en Arica
+          </div>
+
+          <h1
+            className="
+              mt-6
+              max-w-[780px]
+              text-[44px]
+              font-black
+              leading-[0.95]
+              tracking-[-0.045em]
+              text-white
+
+              sm:text-6xl
+              md:text-7xl
+              lg:text-[82px]
+            "
+          >
+            Hamburguesas hechas
+            <span className="block text-yellow-400">
+              para antojarte.
+            </span>
+          </h1>
+
+          <p
+            className="
+              mt-6
+              max-w-xl
+              text-base
+              leading-7
+              text-neutral-300
+
+              sm:text-lg
+              sm:leading-8
+
+              md:text-xl
+            "
+          >
+            Carne jugosa, pan suave, queso derretido y papas
+            crujientes. Haz tu pedido online de forma rápida y
+            sencilla.
+          </p>
+
+          <div
+            className="
+              mt-8
+              flex
+              flex-col
+              gap-3
+
+              sm:flex-row
+              sm:items-center
+            "
+          >
+            <a
+              href="#menu"
+              className="
+                inline-flex
+                min-h-14
+                items-center
+                justify-center
+                gap-3
+                rounded-2xl
+                bg-yellow-400
+                px-7
+                py-4
+                text-base
+                font-black
+                text-black
+                shadow-[0_18px_45px_rgba(255,199,44,0.2)]
+                transition
+
+                hover:-translate-y-0.5
+                hover:bg-yellow-300
+                hover:shadow-[0_22px_55px_rgba(255,199,44,0.28)]
+
+                active:translate-y-0
+                active:scale-[0.98]
+              "
+            >
+              VER MENÚ
+              <span aria-hidden="true">→</span>
+            </a>
+
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="
+                inline-flex
+                min-h-14
+                items-center
+                justify-center
+                gap-2
+                rounded-2xl
+                border
+                border-white/15
+                bg-white/[0.05]
+                px-6
+                py-4
+                text-sm
+                font-black
+                text-white
+                transition
+
+                hover:border-white/25
+                hover:bg-white/10
+
+                active:scale-[0.98]
+              "
+            >
+              <span aria-hidden="true">💬</span>
+              CONSULTAR
+            </a>
+          </div>
+
+          <div
+            className="
+              mt-8
+              grid
+              max-w-xl
+              grid-cols-1
+              gap-3
+
+              min-[420px]:grid-cols-3
+            "
+          >
+            <div
+              className="
+                rounded-2xl
+                border
+                border-white/10
+                bg-white/[0.04]
+                px-4
+                py-3
+                backdrop-blur
+              "
+            >
+              <p className="text-xs font-bold text-neutral-500">
+                Modalidad
+              </p>
+
+              <p className="mt-1 text-sm font-black text-white">
+                Retiro o delivery
+              </p>
+            </div>
+
+            <div
+              className="
+                rounded-2xl
+                border
+                border-white/10
+                bg-white/[0.04]
+                px-4
+                py-3
+                backdrop-blur
+              "
+            >
+              <p className="text-xs font-bold text-neutral-500">
+                Delivery
+              </p>
+
+              <p className="mt-1 text-sm font-black text-white">
+                Desde $1.500
+              </p>
+            </div>
+
+            <div
+              className="
+                rounded-2xl
+                border
+                border-white/10
+                bg-white/[0.04]
+                px-4
+                py-3
+                backdrop-blur
+              "
+            >
+              <p className="text-xs font-bold text-neutral-500">
+                Ubicación
+              </p>
+
+              <p className="mt-1 text-sm font-black text-white">
+                Arica, Chile
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Visual principal */}
+        <div
+          className="
+            relative
+            mx-auto
+            flex
+            w-full
+            max-w-[540px]
+            items-center
+            justify-center
+
+            lg:max-w-none
+          "
+        >
+          <div
+            aria-hidden="true"
+            className="
+              absolute
+              left-1/2
+              top-1/2
+              h-[310px]
+              w-[310px]
+              -translate-x-1/2
+              -translate-y-1/2
+              rounded-full
+              bg-yellow-400/15
+              blur-[80px]
+
+              sm:h-[420px]
+              sm:w-[420px]
+            "
+          />
+
+          <div
+            className="
+              relative
+              w-full
+              overflow-hidden
+              rounded-[32px]
+              border
+              border-white/10
+              bg-gradient-to-br
+              from-white/[0.08]
+              to-white/[0.02]
+              p-5
+              shadow-[0_32px_90px_rgba(0,0,0,0.55)]
+              backdrop-blur
+
+              sm:rounded-[40px]
+              sm:p-8
+            "
+          >
+            <div
+              className="
+                absolute
+                inset-x-8
+                top-0
+                h-px
+                bg-gradient-to-r
+                from-transparent
+                via-yellow-400/70
+                to-transparent
+              "
+            />
+
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                gap-4
+              "
+            >
               <div>
-                <p className="text-yellow-400 font-black tracking-[0.35em] text-xs md:text-sm">
-                  ARICA · CHILE
+                <p
+                  className="
+                    text-[10px]
+                    font-black
+                    uppercase
+                    tracking-[0.2em]
+                    text-yellow-400
+
+                    sm:text-xs
+                  "
+                >
+                  American Burger
                 </p>
 
-                <h1 className="text-4xl md:text-6xl font-black text-white leading-none mt-2">
-                  AMERICAN
-                  <br />
-                  <span className="text-red-600">BURGER</span>
-                </h1>
+                <p
+                  className="
+                    mt-1
+                    text-xl
+                    font-black
+                    text-white
+
+                    sm:text-2xl
+                  "
+                >
+                  Sabor que se nota
+                </p>
+              </div>
+
+              <div
+                className="
+                  flex
+                  h-14
+                  w-14
+                  shrink-0
+                  items-center
+                  justify-center
+                  overflow-hidden
+                  rounded-full
+                  border
+                  border-yellow-400/30
+                  bg-yellow-400
+                  p-1
+                "
+              >
+                <img
+                  src={logo}
+                  alt=""
+                  aria-hidden="true"
+                  className="
+                    h-full
+                    w-full
+                    rounded-full
+                    object-contain
+                  "
+                />
               </div>
             </div>
 
-            <p className="mt-10 text-red-500 font-black tracking-[0.22em] text-sm md:text-base">
-              ★ HECHAS COMO TIENEN QUE SER
-            </p>
+            <div
+              className="
+                relative
+                mt-5
+                flex
+                min-h-[300px]
+                items-center
+                justify-center
+                overflow-hidden
+                rounded-[26px]
+                bg-[radial-gradient(circle_at_50%_48%,rgba(255,199,44,0.2),transparent_34%),linear-gradient(145deg,#151515_0%,#080808_70%)]
+                sm:min-h-[400px]
+                sm:rounded-[32px]
+              "
+            >
+              <div
+                aria-hidden="true"
+                className="
+                  absolute
+                  bottom-8
+                  h-14
+                  w-64
+                  rounded-[100%]
+                  bg-black/80
+                  blur-xl
+                "
+              />
 
-            <h2 className="mt-4 text-[56px] sm:text-7xl md:text-8xl lg:text-[105px] font-black leading-[0.82] tracking-tight text-white">
-              SABOR
-              <br />
-              QUE
-              <br />
-              <span className="text-yellow-400">
-                TE ATRAPA
-              </span>
-            </h2>
+              <div
+                aria-label="Hamburguesa American Burger"
+                className="
+                  relative
+                  select-none
+                  text-[170px]
+                  leading-none
+                  drop-shadow-[0_30px_30px_rgba(0,0,0,0.7)]
 
-            <p className="mt-7 text-lg md:text-2xl text-white/90 max-w-2xl leading-relaxed">
-              Hamburguesas premium, papas crujientes y pollo crispy.
-              Compra directo desde nuestra tienda online.
-            </p>
+                  sm:text-[245px]
+                "
+              >
+                🍔
+              </div>
 
-            <div className="mt-8 flex flex-col sm:flex-row gap-4">
+              <div
+                className="
+                  absolute
+                  left-4
+                  top-4
+                  rounded-full
+                  bg-red-600
+                  px-3
+                  py-2
+                  text-[10px]
+                  font-black
+                  uppercase
+                  tracking-wide
+                  text-white
+
+                  sm:left-5
+                  sm:top-5
+                  sm:text-xs
+                "
+              >
+                Más vendida
+              </div>
+
+              <div
+                className="
+                  absolute
+                  bottom-4
+                  right-4
+                  rounded-2xl
+                  border
+                  border-white/10
+                  bg-black/75
+                  px-4
+                  py-3
+                  text-right
+                  backdrop-blur
+
+                  sm:bottom-5
+                  sm:right-5
+                "
+              >
+                <p className="text-[10px] font-bold uppercase text-neutral-400">
+                  Hamburguesas desde
+                </p>
+
+                <p className="mt-1 text-2xl font-black text-yellow-400">
+                  $4.900
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="
+                mt-5
+                flex
+                items-center
+                justify-between
+                gap-4
+              "
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-400">
+                  ★★★★★
+                </span>
+
+                <span className="text-xs font-bold text-neutral-400">
+                  Recomendado
+                </span>
+              </div>
+
               <a
                 href="#menu"
-                className="bg-yellow-400 hover:bg-yellow-300 text-black px-8 py-5 rounded-2xl font-black text-lg text-center shadow-2xl shadow-yellow-500/20 transition hover:scale-105"
+                className="
+                  text-sm
+                  font-black
+                  text-white
+                  transition
+                  hover:text-yellow-400
+                "
               >
-                🍔 PEDIR AHORA →
-              </a>
-
-              <a
-                href="https://wa.me/56930809265?text=Hola%20American%20Burger%20🍔%20quiero%20hacer%20un%20pedido."
-                target="_blank"
-                rel="noreferrer"
-                className="border border-yellow-400/70 bg-black/50 hover:bg-white hover:text-black text-white px-8 py-5 rounded-2xl font-black text-lg text-center transition"
-              >
-                💬 CHAT POR WHATSAPP
+                Pedir ahora →
               </a>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="relative min-h-[360px] md:min-h-[520px] flex items-center justify-center">
-            <div className="absolute w-[360px] h-[360px] md:w-[560px] md:h-[560px] rounded-full bg-red-600/25 blur-3xl" />
+      {/* Franja inferior */}
+      <div
+        className="
+          relative
+          border-t
+          border-white/10
+          bg-black/60
+          backdrop-blur
+        "
+      >
+        <div
+          className="
+            mx-auto
+            flex
+            max-w-7xl
+            flex-wrap
+            items-center
+            justify-center
+            gap-x-6
+            gap-y-2
+            px-5
+            py-4
+            text-center
+            text-xs
+            font-bold
+            text-neutral-400
 
-            <div className="absolute top-4 left-4 md:top-10 md:left-0 bg-black/85 border border-white/10 rounded-2xl px-5 py-4 shadow-2xl z-10">
-              <p className="text-neutral-400 text-xs font-bold">Desde</p>
-              <p className="text-yellow-400 text-3xl md:text-4xl font-black">$4.900</p>
-            </div>
-
-            <div className="absolute right-0 top-10 hidden md:flex w-36 h-36 rounded-full border-4 border-yellow-400 bg-black/80 items-center justify-center text-center rotate-[-10deg] shadow-2xl z-10">
-              <div>
-                <p className="text-white text-3xl font-black">100%</p>
-                <p className="text-yellow-400 font-black leading-none">
-                  CARNE
-                  <br />
-                  DE RES
-                </p>
-              </div>
-            </div>
-
-            <div className="relative text-[250px] sm:text-[320px] md:text-[440px] leading-none drop-shadow-[0_35px_40px_rgba(0,0,0,.9)] select-none">
-              🍔
-            </div>
-
-            <div className="absolute bottom-6 right-2 md:right-10 bg-yellow-400 text-black px-6 py-4 rounded-3xl shadow-2xl rotate-3">
-              <p className="text-xs font-black">COMBO</p>
-              <p className="text-2xl font-black">+ PAPAS</p>
-            </div>
-          </div>
+            sm:text-sm
+          "
+        >
+          <span>100% carne de vacuno</span>
+          <span className="hidden text-yellow-400 sm:inline">
+            •
+          </span>
+          <span>Preparación al momento</span>
+          <span className="hidden text-yellow-400 sm:inline">
+            •
+          </span>
+          <span>Compra directa online</span>
         </div>
       </div>
     </section>
