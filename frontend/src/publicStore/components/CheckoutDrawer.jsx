@@ -1,6 +1,7 @@
 import {
   useEffect,
-  useRef
+  useRef,
+  useState
 } from 'react'
 
 const BANK_INFO = {
@@ -64,113 +65,259 @@ const formatChilePhone = (value = '') => {
   return formatted
 }
 
-const errorInputClass =
-  'border-red-500 focus:border-red-400'
-
-const normalInputClass =
-  'border-white/10 focus:border-yellow-400'
+const EMPTY_ERRORS = {
+  general: '',
+  name: '',
+  phone: '',
+  address: '',
+  cashAmount: ''
+}
 
 function CheckoutDrawer({
   open = false,
-  customer,
+  customer = {
+    name: '',
+    phone: '',
+    address: '',
+    deliveryType: 'pickup',
+    paymentMethod: 'cash',
+    cashAmount: '',
+    notes: ''
+  },
   setCustomer,
   subtotal = 0,
   deliveryFee = 0,
   total = 0,
   sending = false,
-  errors = {},
-  message = '',
   storeClosed = false,
   storeClosedMessage = '',
-  onClearError,
+  message = '',
   onClose,
   onSubmit,
   onCopyBankInfo
 }) {
-  const contentRef = useRef(null)
-  const nameRef = useRef(null)
-  const phoneRef = useRef(null)
-  const addressRef = useRef(null)
-  const cashAmountRef = useRef(null)
+  const [errors, setErrors] =
+    useState(EMPTY_ERRORS)
+
+  const scrollContainerRef =
+    useRef(null)
+
+  const nameInputRef = useRef(null)
+  const phoneInputRef = useRef(null)
+  const addressInputRef = useRef(null)
+  const cashInputRef = useRef(null)
 
   const cashAmount = Number(
     onlyNumbers(customer.cashAmount || 0)
   )
 
   const changeAmount =
-    cashAmount - total
+    cashAmount - Number(total || 0)
 
-  const finalStoreClosedMessage =
-    String(storeClosedMessage || '').trim() ||
+  const closedMessage =
+    storeClosedMessage ||
     'American Burger no está recibiendo pedidos en este momento porque la caja está cerrada.'
+
+  useEffect(() => {
+    if (!open) {
+      setErrors(EMPTY_ERRORS)
+    }
+  }, [open])
 
   const updateCustomer = (
     field,
     value
   ) => {
-    setCustomer((current) => ({
-      ...current,
-      [field]: value
-    }))
+    if (
+      typeof setCustomer !==
+      'function'
+    ) {
+      return
+    }
 
-    if (typeof onClearError === 'function') {
-      onClearError(field)
-      onClearError('general')
+    setCustomer({
+      ...customer,
+      [field]: value
+    })
+
+    setErrors((current) => ({
+      ...current,
+      general: '',
+      [field]: ''
+    }))
+  }
+
+  const focusFirstError = (
+    validationErrors
+  ) => {
+    window.setTimeout(() => {
+      if (
+        validationErrors.name &&
+        nameInputRef.current
+      ) {
+        nameInputRef.current.focus()
+        return
+      }
+
+      if (
+        validationErrors.phone &&
+        phoneInputRef.current
+      ) {
+        phoneInputRef.current.focus()
+        return
+      }
+
+      if (
+        validationErrors.address &&
+        addressInputRef.current
+      ) {
+        addressInputRef.current.focus()
+        return
+      }
+
+      if (
+        validationErrors.cashAmount &&
+        cashInputRef.current
+      ) {
+        cashInputRef.current.focus()
+      }
+    }, 100)
+  }
+
+  const validateCheckout = () => {
+    const validationErrors = {
+      ...EMPTY_ERRORS
+    }
+
+    const customerName =
+      String(customer.name || '').trim()
+
+    const phoneDigits =
+      normalizeChilePhone(
+        customer.phone
+      )
+
+    const customerAddress =
+      String(
+        customer.address || ''
+      ).trim()
+
+    if (storeClosed) {
+      validationErrors.general =
+        closedMessage
+    }
+
+    if (!customerName) {
+      validationErrors.name =
+        'Ingresa tu nombre para continuar.'
+    }
+
+    if (!phoneDigits) {
+      validationErrors.phone =
+        'Ingresa tu número de teléfono.'
+    } else if (
+      phoneDigits.length !== 9
+    ) {
+      validationErrors.phone =
+        'El teléfono debe tener 9 números. Ejemplo: +56 9 4579 9597.'
+    } else if (
+      !phoneDigits.startsWith('9')
+    ) {
+      validationErrors.phone =
+        'Ingresa un número móvil chileno que comience con 9.'
+    }
+
+    if (
+      customer.deliveryType ===
+        'delivery' &&
+      !customerAddress
+    ) {
+      validationErrors.address =
+        'Ingresa la dirección donde debemos entregar el pedido.'
+    }
+
+    if (
+      customer.paymentMethod ===
+        'cash' &&
+      cashAmount > 0 &&
+      cashAmount <
+        Number(total || 0)
+    ) {
+      validationErrors.cashAmount =
+        `El monto ingresado es menor que el total de ${money(
+          total
+        )}.`
+    }
+
+    const hasErrors =
+      Object.values(
+        validationErrors
+      ).some(Boolean)
+
+    return {
+      validationErrors,
+      hasErrors
     }
   }
 
-  useEffect(() => {
-    if (!open) {
-      return
-    }
+  const handleSubmit = (event) => {
+    event.preventDefault()
 
-    const firstErrorField = [
-      'general',
-      'name',
-      'phone',
-      'address',
-      'cashAmount'
-    ].find((field) => errors?.[field])
+    const {
+      validationErrors,
+      hasErrors
+    } = validateCheckout()
 
-    if (!firstErrorField) {
-      return
-    }
+    setErrors(validationErrors)
 
-    const targetByField = {
-      name: nameRef.current,
-      phone: phoneRef.current,
-      address: addressRef.current,
-      cashAmount: cashAmountRef.current
-    }
+    if (hasErrors) {
+      focusFirstError(
+        validationErrors
+      )
 
-    const target =
-      targetByField[firstErrorField]
-
-    window.requestAnimationFrame(() => {
-      if (target) {
-        target.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        })
-
-        target.focus({
-          preventScroll: true
-        })
-      } else if (contentRef.current) {
-        contentRef.current.scrollTo({
+      if (
+        scrollContainerRef.current
+      ) {
+        scrollContainerRef.current.scrollTo({
           top: 0,
           behavior: 'smooth'
         })
       }
-    })
-  }, [errors, open])
+
+      return
+    }
+
+    if (
+      typeof onSubmit ===
+      'function'
+    ) {
+      onSubmit(event)
+    }
+  }
+
+  const handleClose = () => {
+    setErrors(EMPTY_ERRORS)
+
+    if (
+      typeof onClose ===
+      'function'
+    ) {
+      onClose()
+    }
+  }
 
   return (
     <>
       {open && (
         <div
-          onClick={onClose}
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          onClick={handleClose}
+          className="
+            fixed
+            inset-0
+            z-50
+            bg-black/70
+            backdrop-blur-sm
+          "
         />
       )}
 
@@ -178,155 +325,251 @@ function CheckoutDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="Finalizar pedido"
-        className={`fixed right-0 top-0 z-[70] h-full w-full border-l border-white/10 bg-[#101010] shadow-2xl transition-transform duration-300 sm:w-[520px] ${
-          open
-            ? 'translate-x-0'
-            : 'translate-x-full'
-        }`}
+        className={`
+          fixed
+          right-0
+          top-0
+          z-[70]
+          h-full
+          w-full
+          border-l
+          border-white/10
+          bg-[#101010]
+          shadow-2xl
+          transition-transform
+          duration-300
+          sm:w-[520px]
+          ${
+            open
+              ? 'translate-x-0'
+              : 'translate-x-full'
+          }
+        `}
       >
         <form
-          onSubmit={onSubmit}
+          onSubmit={handleSubmit}
           noValidate
           className="flex h-full flex-col"
         >
-          <div className="flex items-center justify-between border-b border-white/10 p-6">
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              border-b
+              border-white/10
+              p-6
+            "
+          >
             <div>
-              <p className="text-sm font-black tracking-widest text-yellow-400">
+              <p
+                className="
+                  text-sm
+                  font-black
+                  tracking-widest
+                  text-yellow-400
+                "
+              >
                 CHECKOUT
               </p>
 
-              <h2 className="text-3xl font-black text-white">
+              <h2
+                className="
+                  text-3xl
+                  font-black
+                  text-white
+                "
+              >
                 Finalizar pedido
               </h2>
             </div>
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Cerrar checkout"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 font-black text-white transition hover:bg-white/20 active:scale-95"
+              className="
+                flex
+                h-11
+                w-11
+                items-center
+                justify-center
+                rounded-full
+                bg-white/10
+                text-white
+                font-black
+                transition
+                hover:bg-white/20
+              "
             >
               ✕
             </button>
           </div>
 
           <div
-            ref={contentRef}
-            className="flex-1 space-y-5 overflow-y-auto p-6"
+            ref={scrollContainerRef}
+            className="
+              flex-1
+              space-y-5
+              overflow-y-auto
+              p-6
+            "
           >
-            {storeClosed && (
+            {(errors.general ||
+              message ||
+              storeClosed) && (
               <div
                 role="alert"
-                className="rounded-3xl border border-yellow-300/50 bg-yellow-400 px-5 py-5 text-black shadow-lg"
+                aria-live="assertive"
+                className="
+                  rounded-2xl
+                  border
+                  border-red-400/40
+                  bg-red-500/15
+                  px-5
+                  py-4
+                  text-white
+                "
               >
                 <div className="flex items-start gap-3">
                   <span
                     aria-hidden="true"
                     className="text-2xl"
                   >
-                    🔒
+                    ⚠️
                   </span>
 
                   <div>
-                    <h3 className="text-lg font-black">
-                      Pedidos temporalmente cerrados
-                    </h3>
+                    <p
+                      className="
+                        font-black
+                        text-red-300
+                      "
+                    >
+                      Revisa los datos del pedido
+                    </p>
 
-                    <p className="mt-1 font-bold leading-relaxed">
-                      {finalStoreClosedMessage}
+                    <p
+                      className="
+                        mt-1
+                        text-sm
+                        font-semibold
+                        leading-relaxed
+                        text-white
+                      "
+                    >
+                      {errors.general ||
+                        message ||
+                        closedMessage}
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {(errors.general || message) && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className={`rounded-2xl border px-5 py-4 font-bold ${
-                  errors.general
-                    ? 'border-red-400/50 bg-red-500/15 text-red-200'
-                    : 'border-yellow-400/40 bg-yellow-400/10 text-yellow-300'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <span aria-hidden="true">
-                    {errors.general ? '⚠️' : '✓'}
-                  </span>
-
-                  <span>
-                    {errors.general || message}
-                  </span>
-                </div>
-              </div>
-            )}
-
             <div className="space-y-3">
-              <h3 className="text-xl font-black text-white">
+              <h3
+                className="
+                  text-xl
+                  font-black
+                  text-white
+                "
+              >
                 Datos del cliente
               </h3>
 
               <div>
                 <label
-                  htmlFor="customer-name"
-                  className="mb-2 block text-sm font-bold text-neutral-300"
+                  htmlFor="checkout-name"
+                  className="
+                    mb-2
+                    block
+                    text-sm
+                    font-bold
+                    text-neutral-300
+                  "
                 >
                   Nombre
                 </label>
 
                 <input
-                  ref={nameRef}
-                  id="customer-name"
-                  value={customer.name}
+                  ref={nameInputRef}
+                  id="checkout-name"
+                  type="text"
+                  autoComplete="name"
+                  value={
+                    customer.name || ''
+                  }
                   onChange={(event) =>
                     updateCustomer(
                       'name',
                       event.target.value
                     )
                   }
-                  placeholder="Nombre"
-                  autoComplete="name"
-                  aria-invalid={Boolean(errors.name)}
-                  aria-describedby={
-                    errors.name
-                      ? 'customer-name-error'
-                      : undefined
-                  }
-                  className={`w-full rounded-2xl border bg-neutral-900 px-4 py-4 text-white outline-none transition ${
-                    errors.name
-                      ? errorInputClass
-                      : normalInputClass
-                  }`}
+                  placeholder="Ingresa tu nombre"
+                  className={`
+                    w-full
+                    rounded-2xl
+                    border
+                    bg-neutral-900
+                    px-4
+                    py-4
+                    text-white
+                    outline-none
+                    transition
+                    placeholder:text-neutral-500
+                    ${
+                      errors.name
+                        ? 'border-red-500 focus:border-red-400'
+                        : 'border-white/10 focus:border-yellow-400'
+                    }
+                  `}
                 />
 
                 {errors.name && (
                   <p
-                    id="customer-name-error"
-                    className="mt-2 flex items-center gap-2 text-sm font-bold text-red-400"
+                    role="alert"
+                    className="
+                      mt-2
+                      flex
+                      items-center
+                      gap-2
+                      text-sm
+                      font-bold
+                      text-red-400
+                    "
                   >
-                    <span aria-hidden="true">
-                      ⚠
+                    <span>⚠</span>
+                    <span>
+                      {errors.name}
                     </span>
-                    {errors.name}
                   </p>
                 )}
               </div>
 
               <div>
                 <label
-                  htmlFor="customer-phone"
-                  className="mb-2 block text-sm font-bold text-neutral-300"
+                  htmlFor="checkout-phone"
+                  className="
+                    mb-2
+                    block
+                    text-sm
+                    font-bold
+                    text-neutral-300
+                  "
                 >
                   Teléfono
                 </label>
 
                 <input
-                  ref={phoneRef}
-                  id="customer-phone"
+                  ref={phoneInputRef}
+                  id="checkout-phone"
                   type="tel"
                   inputMode="numeric"
-                  value={formatChilePhone(customer.phone)}
+                  autoComplete="tel"
+                  value={formatChilePhone(
+                    customer.phone
+                  )}
                   onChange={(event) =>
                     updateCustomer(
                       'phone',
@@ -336,36 +579,56 @@ function CheckoutDrawer({
                     )
                   }
                   placeholder="+56 9 XXXX XXXX"
-                  autoComplete="tel"
-                  aria-invalid={Boolean(errors.phone)}
-                  aria-describedby={
-                    errors.phone
-                      ? 'customer-phone-error'
-                      : undefined
-                  }
-                  className={`w-full rounded-2xl border bg-neutral-900 px-4 py-4 text-white outline-none transition ${
-                    errors.phone
-                      ? errorInputClass
-                      : normalInputClass
-                  }`}
+                  className={`
+                    w-full
+                    rounded-2xl
+                    border
+                    bg-neutral-900
+                    px-4
+                    py-4
+                    text-white
+                    outline-none
+                    transition
+                    placeholder:text-neutral-500
+                    ${
+                      errors.phone
+                        ? 'border-red-500 focus:border-red-400'
+                        : 'border-white/10 focus:border-yellow-400'
+                    }
+                  `}
                 />
 
                 {errors.phone && (
                   <p
-                    id="customer-phone-error"
-                    className="mt-2 flex items-center gap-2 text-sm font-bold text-red-400"
+                    role="alert"
+                    className="
+                      mt-2
+                      flex
+                      items-start
+                      gap-2
+                      text-sm
+                      font-bold
+                      text-red-400
+                    "
                   >
-                    <span aria-hidden="true">
-                      ⚠
+                    <span>⚠</span>
+
+                    <span>
+                      {errors.phone}
                     </span>
-                    {errors.phone}
                   </p>
                 )}
               </div>
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-xl font-black text-white">
+              <h3
+                className="
+                  text-xl
+                  font-black
+                  text-white
+                "
+              >
                 Tipo de entrega
               </h3>
 
@@ -377,16 +640,28 @@ function CheckoutDrawer({
                       'deliveryType',
                       'pickup'
                     )
-                    updateCustomer(
-                      'address',
-                      ''
+
+                    setErrors(
+                      (current) => ({
+                        ...current,
+                        address: ''
+                      })
                     )
                   }}
-                  className={`rounded-2xl border px-4 py-4 font-black transition ${
-                    customer.deliveryType === 'pickup'
-                      ? 'border-yellow-400 bg-yellow-400 text-black'
-                      : 'border-white/10 bg-neutral-900 text-white'
-                  }`}
+                  className={`
+                    rounded-2xl
+                    border
+                    px-4
+                    py-4
+                    font-black
+                    transition
+                    ${
+                      customer.deliveryType ===
+                      'pickup'
+                        ? 'border-yellow-400 bg-yellow-400 text-black'
+                        : 'border-white/10 bg-neutral-900 text-white'
+                    }
+                  `}
                 >
                   🛍️ Retiro
                 </button>
@@ -399,59 +674,94 @@ function CheckoutDrawer({
                       'delivery'
                     )
                   }
-                  className={`rounded-2xl border px-4 py-4 font-black transition ${
-                    customer.deliveryType === 'delivery'
-                      ? 'border-yellow-400 bg-yellow-400 text-black'
-                      : 'border-white/10 bg-neutral-900 text-white'
-                  }`}
+                  className={`
+                    rounded-2xl
+                    border
+                    px-4
+                    py-4
+                    font-black
+                    transition
+                    ${
+                      customer.deliveryType ===
+                      'delivery'
+                        ? 'border-yellow-400 bg-yellow-400 text-black'
+                        : 'border-white/10 bg-neutral-900 text-white'
+                    }
+                  `}
                 >
                   🛵 Delivery
                 </button>
               </div>
 
-              {customer.deliveryType === 'delivery' && (
+              {customer.deliveryType ===
+                'delivery' && (
                 <div>
                   <label
-                    htmlFor="customer-address"
-                    className="mb-2 block text-sm font-bold text-neutral-300"
+                    htmlFor="checkout-address"
+                    className="
+                      mb-2
+                      block
+                      text-sm
+                      font-bold
+                      text-neutral-300
+                    "
                   >
                     Dirección de entrega
                   </label>
 
                   <input
-                    ref={addressRef}
-                    id="customer-address"
-                    value={customer.address}
+                    ref={addressInputRef}
+                    id="checkout-address"
+                    type="text"
+                    autoComplete="street-address"
+                    value={
+                      customer.address ||
+                      ''
+                    }
                     onChange={(event) =>
                       updateCustomer(
                         'address',
                         event.target.value
                       )
                     }
-                    placeholder="Dirección de entrega"
-                    autoComplete="street-address"
-                    aria-invalid={Boolean(errors.address)}
-                    aria-describedby={
-                      errors.address
-                        ? 'customer-address-error'
-                        : undefined
-                    }
-                    className={`w-full rounded-2xl border bg-neutral-900 px-4 py-4 text-white outline-none transition ${
-                      errors.address
-                        ? errorInputClass
-                        : normalInputClass
-                    }`}
+                    placeholder="Calle, número y sector"
+                    className={`
+                      w-full
+                      rounded-2xl
+                      border
+                      bg-neutral-900
+                      px-4
+                      py-4
+                      text-white
+                      outline-none
+                      transition
+                      placeholder:text-neutral-500
+                      ${
+                        errors.address
+                          ? 'border-red-500 focus:border-red-400'
+                          : 'border-white/10 focus:border-yellow-400'
+                      }
+                    `}
                   />
 
                   {errors.address && (
                     <p
-                      id="customer-address-error"
-                      className="mt-2 flex items-center gap-2 text-sm font-bold text-red-400"
+                      role="alert"
+                      className="
+                        mt-2
+                        flex
+                        items-center
+                        gap-2
+                        text-sm
+                        font-bold
+                        text-red-400
+                      "
                     >
-                      <span aria-hidden="true">
-                        ⚠
+                      <span>⚠</span>
+
+                      <span>
+                        {errors.address}
                       </span>
-                      {errors.address}
                     </p>
                   )}
                 </div>
@@ -459,7 +769,13 @@ function CheckoutDrawer({
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-xl font-black text-white">
+              <h3
+                className="
+                  text-xl
+                  font-black
+                  text-white
+                "
+              >
                 Forma de pago
               </h3>
 
@@ -472,11 +788,20 @@ function CheckoutDrawer({
                       'cash'
                     )
                   }
-                  className={`rounded-2xl border px-4 py-4 font-black transition ${
-                    customer.paymentMethod === 'cash'
-                      ? 'border-yellow-400 bg-yellow-400 text-black'
-                      : 'border-white/10 bg-neutral-900 text-white'
-                  }`}
+                  className={`
+                    rounded-2xl
+                    border
+                    px-4
+                    py-4
+                    font-black
+                    transition
+                    ${
+                      customer.paymentMethod ===
+                      'cash'
+                        ? 'border-yellow-400 bg-yellow-400 text-black'
+                        : 'border-white/10 bg-neutral-900 text-white'
+                    }
+                  `}
                 >
                   💵 Efectivo
                 </button>
@@ -488,35 +813,65 @@ function CheckoutDrawer({
                       'paymentMethod',
                       'transfer'
                     )
-                    updateCustomer(
-                      'cashAmount',
-                      ''
+
+                    setErrors(
+                      (current) => ({
+                        ...current,
+                        cashAmount: ''
+                      })
                     )
                   }}
-                  className={`rounded-2xl border px-4 py-4 font-black transition ${
-                    customer.paymentMethod === 'transfer'
-                      ? 'border-yellow-400 bg-yellow-400 text-black'
-                      : 'border-white/10 bg-neutral-900 text-white'
-                  }`}
+                  className={`
+                    rounded-2xl
+                    border
+                    px-4
+                    py-4
+                    font-black
+                    transition
+                    ${
+                      customer.paymentMethod ===
+                      'transfer'
+                        ? 'border-yellow-400 bg-yellow-400 text-black'
+                        : 'border-white/10 bg-neutral-900 text-white'
+                    }
+                  `}
                 >
                   🏦 Transferencia
                 </button>
               </div>
 
-              {customer.paymentMethod === 'cash' && (
-                <div className="space-y-3 rounded-2xl border border-white/10 bg-neutral-900 p-4">
+              {customer.paymentMethod ===
+                'cash' && (
+                <div
+                  className="
+                    space-y-3
+                    rounded-2xl
+                    border
+                    border-white/10
+                    bg-neutral-900
+                    p-4
+                  "
+                >
                   <label
-                    htmlFor="cash-amount"
-                    className="block font-black text-yellow-400"
+                    htmlFor="checkout-cash"
+                    className="
+                      block
+                      font-black
+                      text-yellow-400
+                    "
                   >
                     ¿Con cuánto pagas?
                   </label>
 
                   <input
-                    ref={cashAmountRef}
-                    id="cash-amount"
+                    ref={cashInputRef}
+                    id="checkout-cash"
+                    type="text"
                     inputMode="numeric"
-                    value={customer.cashAmount}
+                    value={
+                      customer.cashAmount ||
+                      ''
+                    }
                     onChange={(event) =>
                       updateCustomer(
                         'cashAmount',
@@ -525,60 +880,114 @@ function CheckoutDrawer({
                         )
                       )
                     }
-                    placeholder="Ej: 20000"
-                    aria-invalid={Boolean(errors.cashAmount)}
-                    aria-describedby={
-                      errors.cashAmount
-                        ? 'cash-amount-error'
-                        : undefined
-                    }
-                    className={`w-full rounded-2xl border bg-black px-4 py-4 text-white outline-none transition ${
-                      errors.cashAmount
-                        ? errorInputClass
-                        : normalInputClass
-                    }`}
+                    placeholder="Ejemplo: 20000"
+                    className={`
+                      w-full
+                      rounded-2xl
+                      border
+                      bg-black
+                      px-4
+                      py-4
+                      text-white
+                      outline-none
+                      transition
+                      placeholder:text-neutral-500
+                      ${
+                        errors.cashAmount
+                          ? 'border-red-500 focus:border-red-400'
+                          : 'border-white/10 focus:border-yellow-400'
+                      }
+                    `}
                   />
 
                   {errors.cashAmount && (
                     <p
-                      id="cash-amount-error"
-                      className="flex items-center gap-2 text-sm font-bold text-red-400"
+                      role="alert"
+                      className="
+                        flex
+                        items-start
+                        gap-2
+                        text-sm
+                        font-bold
+                        text-red-400
+                      "
                     >
-                      <span aria-hidden="true">
-                        ⚠
+                      <span>⚠</span>
+
+                      <span>
+                        {
+                          errors.cashAmount
+                        }
                       </span>
-                      {errors.cashAmount}
                     </p>
                   )}
 
-                  {cashAmount > 0 && (
-                    <p className="font-bold text-white">
-                      Vuelto estimado:{' '}
-                      <span className="text-yellow-400">
-                        {money(
-                          Math.max(
-                            changeAmount,
-                            0
-                          )
-                        )}
-                      </span>
-                    </p>
-                  )}
+                  {cashAmount > 0 &&
+                    !errors.cashAmount && (
+                      <p className="font-bold text-white">
+                        Vuelto estimado:{' '}
+                        <span className="text-yellow-400">
+                          {money(
+                            Math.max(
+                              changeAmount,
+                              0
+                            )
+                          )}
+                        </span>
+                      </p>
+                    )}
                 </div>
               )}
 
-              {customer.paymentMethod === 'transfer' && (
-                <div className="space-y-2 rounded-2xl border border-white/10 bg-neutral-900 p-4 text-neutral-300">
-                  <h3 className="font-black text-yellow-400">
+              {customer.paymentMethod ===
+                'transfer' && (
+                <div
+                  className="
+                    space-y-2
+                    rounded-2xl
+                    border
+                    border-white/10
+                    bg-neutral-900
+                    p-4
+                    text-neutral-300
+                  "
+                >
+                  <h3
+                    className="
+                      font-black
+                      text-yellow-400
+                    "
+                  >
                     Datos para transferencia
                   </h3>
 
-                  <p>Banco: {BANK_INFO.bank}</p>
-                  <p>Titular: {BANK_INFO.holder}</p>
-                  <p>Tipo: {BANK_INFO.accountType}</p>
-                  <p>Cuenta: {BANK_INFO.accountNumber}</p>
-                  <p>RUT: {BANK_INFO.rut}</p>
-                  <p>Correo: {BANK_INFO.email}</p>
+                  <p>
+                    Banco: {BANK_INFO.bank}
+                  </p>
+
+                  <p>
+                    Titular:{' '}
+                    {BANK_INFO.holder}
+                  </p>
+
+                  <p>
+                    Tipo:{' '}
+                    {BANK_INFO.accountType}
+                  </p>
+
+                  <p>
+                    Cuenta:{' '}
+                    {BANK_INFO.accountNumber}
+                  </p>
+
+                  <p>
+                    RUT: {BANK_INFO.rut}
+                  </p>
+
+                  <p>
+                    Correo:{' '}
+                    {BANK_INFO.email}
+                  </p>
 
                   <p className="font-black text-yellow-400">
                     Monto: {money(total)}
@@ -586,8 +995,19 @@ function CheckoutDrawer({
 
                   <button
                     type="button"
-                    onClick={onCopyBankInfo}
-                    className="w-full rounded-2xl bg-yellow-400 py-3 font-black text-black transition hover:bg-yellow-300 active:scale-[0.98]"
+                    onClick={
+                      onCopyBankInfo
+                    }
+                    className="
+                      w-full
+                      rounded-2xl
+                      bg-yellow-400
+                      py-3
+                      font-black
+                      text-black
+                      transition
+                      hover:bg-yellow-300
+                    "
                   >
                     Copiar datos bancarios
                   </button>
@@ -597,49 +1017,127 @@ function CheckoutDrawer({
 
             <div>
               <label
-                htmlFor="order-notes"
-                className="mb-2 block text-sm font-bold text-neutral-300"
+                htmlFor="checkout-notes"
+                className="
+                  mb-2
+                  block
+                  text-sm
+                  font-bold
+                  text-neutral-300
+                "
               >
                 Notas del pedido
               </label>
 
               <textarea
-                id="order-notes"
-                value={customer.notes}
+                id="checkout-notes"
+                value={
+                  customer.notes || ''
+                }
                 onChange={(event) =>
                   updateCustomer(
                     'notes',
                     event.target.value
                   )
                 }
-                placeholder="Notas del pedido"
-                className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-yellow-400"
+                placeholder="Ejemplo: sin cebolla, agregar servilletas..."
+                className="
+                  min-h-[120px]
+                  w-full
+                  rounded-2xl
+                  border
+                  border-white/10
+                  bg-neutral-900
+                  px-4
+                  py-4
+                  text-white
+                  outline-none
+                  transition
+                  placeholder:text-neutral-500
+                  focus:border-yellow-400
+                "
               />
             </div>
           </div>
 
-          <div className="border-t border-white/10 bg-black/60 p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div
+            className="
+              border-t
+              border-white/10
+              bg-black/60
+              p-6
+              pb-[calc(1.5rem+env(safe-area-inset-bottom))]
+            "
+          >
             <div className="mb-5 space-y-2">
-              <div className="flex justify-between text-neutral-300">
+              <div
+                className="
+                  flex
+                  justify-between
+                  text-neutral-300
+                "
+              >
                 <span>Subtotal</span>
-                <strong>{money(subtotal)}</strong>
+
+                <strong>
+                  {money(subtotal)}
+                </strong>
               </div>
 
-              <div className="flex justify-between text-neutral-300">
+              <div
+                className="
+                  flex
+                  justify-between
+                  text-neutral-300
+                "
+              >
                 <span>Delivery</span>
-                <strong>{money(deliveryFee)}</strong>
+
+                <strong>
+                  {money(deliveryFee)}
+                </strong>
               </div>
 
-              <div className="flex justify-between border-t border-white/10 pt-3 text-3xl font-black text-yellow-400">
+              <div
+                className="
+                  flex
+                  justify-between
+                  border-t
+                  border-white/10
+                  pt-3
+                  text-3xl
+                  font-black
+                  text-yellow-400
+                "
+              >
                 <span>Total</span>
-                <strong>{money(total)}</strong>
+
+                <strong>
+                  {money(total)}
+                </strong>
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={sending || storeClosed}
-              className="w-full rounded-2xl bg-yellow-400 py-5 text-lg font-black text-black transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+              disabled={
+                sending ||
+                storeClosed
+              }
+              className="
+                w-full
+                rounded-2xl
+                bg-yellow-400
+                py-5
+                text-lg
+                font-black
+                text-black
+                transition
+                hover:bg-yellow-300
+                disabled:cursor-not-allowed
+                disabled:bg-neutral-700
+                disabled:text-neutral-400
+              "
             >
               {storeClosed
                 ? 'PEDIDOS CERRADOS'
