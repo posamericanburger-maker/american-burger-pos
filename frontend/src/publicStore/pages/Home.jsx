@@ -152,10 +152,6 @@ const isComboProduct = (product = {}) => {
 const isBurgerProduct = (product = {}) => {
   const text = getProductText(product)
 
-  /*
-   * Evita confundir el producto "Arma tu Combo"
-   * con una hamburguesa.
-   */
   if (isComboProduct(product)) {
     return false
   }
@@ -178,10 +174,6 @@ const isBurgerProduct = (product = {}) => {
 const isChickenProduct = (product = {}) => {
   const text = getProductText(product)
 
-  /*
-   * Crispy Burger contiene la palabra crispy,
-   * pero debe tratarse primero como hamburguesa.
-   */
   if (isBurgerProduct(product)) {
     return false
   }
@@ -200,10 +192,6 @@ const isChickenProduct = (product = {}) => {
 const isFriesProduct = (product = {}) => {
   const text = getProductText(product)
 
-  /*
-   * Arma tu Combo puede mencionar papas en su descripción,
-   * pero no debe identificarse como una porción de papas.
-   */
   if (isComboProduct(product)) {
     return false
   }
@@ -377,6 +365,28 @@ function Home() {
   const [addedProduct, setAddedProduct] =
     useState('')
 
+  const publicNotice = String(
+    message || error || ''
+  )
+
+  const normalizedPublicNotice =
+    normalizeText(publicNotice)
+
+  const storeClosed = includesAny(
+    normalizedPublicNotice,
+    [
+      'caja esta cerrada',
+      'caja cerrada',
+      'no esta recibiendo pedidos',
+      'no estamos recibiendo pedidos',
+      'pedidos cerrados'
+    ]
+  )
+
+  const storeClosedMessage = storeClosed
+    ? publicNotice
+    : 'American Burger no está recibiendo pedidos en este momento porque la caja está cerrada.'
+
   const [comboSuggestion, setComboSuggestion] =
     useState({
       open: false,
@@ -399,6 +409,12 @@ function Home() {
     cashAmount: '',
     notes: ''
   })
+
+  useEffect(() => {
+    if (storeClosed) {
+      setCheckoutOpen(false)
+    }
+  }, [storeClosed])
 
   useEffect(() => {
     return () => {
@@ -504,10 +520,6 @@ function Home() {
     const combo = suggestionProducts.combo
     const drink = suggestionProducts.drink
 
-    /*
-     * Hamburguesas:
-     * recomienda el producto real "Arma tu Combo".
-     */
     if (isBurgerProduct(product)) {
       if (!combo) {
         console.warn(
@@ -533,10 +545,6 @@ function Home() {
       return
     }
 
-    /*
-     * Pollo:
-     * recomienda únicamente una bebida.
-     */
     if (isChickenProduct(product)) {
       if (!drink) {
         console.warn(
@@ -562,10 +570,6 @@ function Home() {
       return
     }
 
-    /*
-     * Papas:
-     * recomienda únicamente una bebida.
-     */
     if (isFriesProduct(product)) {
       if (!drink) {
         return
@@ -678,6 +682,9 @@ function Home() {
       targetRect.top +
       targetRect.height / 2 -
       startSize / 2
+
+    const flyingElement =
+      document.createElement('div')
 
     flyingElement.setAttribute(
       'aria-hidden',
@@ -875,6 +882,12 @@ function Home() {
   }
 
   const handleContinueToCheckout = () => {
+    if (storeClosed) {
+      setMessage(storeClosedMessage)
+      setCheckoutOpen(false)
+      return
+    }
+
     closeComboSuggestion()
     setCartOpen(false)
     setCheckoutOpen(true)
@@ -910,6 +923,14 @@ Monto: ${money(total)}
 
   const submitOrder = async (event) => {
     event.preventDefault()
+
+    if (storeClosed) {
+      setMessage(storeClosedMessage)
+      setCheckoutOpen(false)
+      setCartOpen(true)
+      return
+    }
+
     setMessage('')
 
     const finalPhone = buildFinalPhone(
@@ -1213,6 +1234,10 @@ Monto: ${money(total)}
         subtotal={subtotal}
         deliveryFee={deliveryFee}
         total={total}
+        storeClosed={storeClosed}
+        storeClosedMessage={
+          storeClosedMessage
+        }
         onClose={handleCloseCart}
         onIncrease={increaseItem}
         onDecrease={decreaseItem}
